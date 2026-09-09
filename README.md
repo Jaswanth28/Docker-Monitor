@@ -66,35 +66,35 @@ This project is licensed under the [MIT License](LICENSE) — free to use, modif
 <h4>Containers overview</h4>
  
 <p align="center">
-  <img src="reference-images/Containers.png" alt="Containers overview" width="1600"/>
+  <img src="reference-images/Containers.png" alt="Containers overview" width="2400"/>
 </p>
 
 <h4>Containers Expanded overview</h4>
  
 <p align="center">
-  <img src="reference-images/Container_Expanded.png" alt="Containers Expanded overview" width="1600"/>
+  <img src="reference-images/Container_Expanded.png" alt="Containers Expanded overview" width="2400"/>
 </p>
 
 <h4>Stacks management view</h4>
  
 <p align="center">
-  <img src="reference-images/Stacks.png" alt="Stacks management view" width="1600"/>
+  <img src="reference-images/Stacks.png" alt="Stacks management view" width="2400"/>
 </p>
 
 <h4>Stacks  management Expanded view</h4>
  
 <p align="center">
-  <img src="reference-images/Stack_Expanded.png" alt="Stacks management view" width="1600"/>
+  <img src="reference-images/Stack_Expanded.png" alt="Stacks management view" width="2400"/>
 </p>
 
 <h4>Images, Volumes & Networks</h4>
  
 <p align="center">
-  <img src="reference-images/Images_Volumes_Networks.png" alt="Images, Volumes & Networks" width="1600"/>
+  <img src="reference-images/Images_Volumes_Networks.png" alt="Images, Volumes & Networks" width="2400"/>
 </p>
 
 <h4>System overview</h4>
  
 <p align="center">
-  <img src="reference-images/System.png" alt="System overview" width="1600"/>
+  <img src="reference-images/System.png" alt="System overview" width="2400"/>
 </p>
