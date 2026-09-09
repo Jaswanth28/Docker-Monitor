@@ -60,3 +60,21 @@ Contributions are welcome! Feel free to open issues or submit pull requests for 
 ## License
 
 This project is licensed under the [MIT License](LICENSE) — free to use, modify, and distribute, including for commercial purposes, as long as the original copyright and license notice is kept intact.
+
+## Screenshots
+
+<p align="center">
+  <img src="reference-images/Containers.png" alt="Containers overview" width="800"/>
+</p>
+
+<p align="center">
+  <img src="reference-images/Stacks.png" alt="Stacks management view" width="800"/>
+</p>
+
+<p align="center">
+  <img src="reference-images/Images_Volumes_Networks.png" alt="Images, Volumes & Networks" width="800"/>
+</p>
+
+<p align="center">
+  <img src="reference-images/System.png" alt="System overview" width="800"/>
+</p>
