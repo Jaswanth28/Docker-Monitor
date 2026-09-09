@@ -1,0 +1,9 @@
+fastapi==0.115.6
+python-multipart==0.0.20
+uvicorn[standard]==0.34.0
+docker==7.1.0
+infisicalsdk==1.0.17
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+pyyaml==6.0.2
+pydantic==2.10.4

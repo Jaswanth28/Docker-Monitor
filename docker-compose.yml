@@ -1,0 +1,90 @@
+name: docker-monitor
+
+services:
+  # ─────────────────────────── Dashboard (UI + API in one image) ───
+  app:
+    build: .
+    container_name: dm-app
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3000}:8000"
+    environment:
+      # Host path of the stacks directory. Mounted at the SAME path inside the
+      # container so relative bind-mounts inside user compose files resolve.
+      STACKS_DIR: ${STACKS_DIR}
+      INFISICAL_URL: http://infisical:8080
+      INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+      INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+      INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+      INFISICAL_ENV: ${INFISICAL_ENV:-prod}
+      INFISICAL_SECRET_PATH: ${INFISICAL_SECRET_PATH:-/}
+      # Fallbacks used ONLY when Infisical isn't configured yet (first boot).
+      JWT_SECRET: ${JWT_SECRET:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      VIEWER_USERNAME: ${VIEWER_USERNAME:-}
+      VIEWER_PASSWORD_HASH: ${VIEWER_PASSWORD_HASH:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${STACKS_DIR}:${STACKS_DIR}
+      # Read-only view of the WSL root so the System page can report host disk usage.
+      - /:/hostfs:ro
+    pid: host   # lets /proc/stat, /proc/meminfo and loadavg reflect the WSL VM, not the container
+    depends_on:
+      - infisical
+    labels:
+      dm.protected: "true"
+
+  # ─────────────────────────── Infisical ───────────────────────────
+  infisical:
+    image: infisical/infisical:latest-postgres
+    container_name: dm-infisical
+    restart: unless-stopped
+    ports:
+      - "${INFISICAL_PORT:-8085}:8080"
+    environment:
+      NODE_ENV: production
+      ENCRYPTION_KEY: ${INFISICAL_ENCRYPTION_KEY}
+      AUTH_SECRET: ${INFISICAL_AUTH_SECRET}
+      DB_CONNECTION_URI: postgres://infisical:${INFISICAL_DB_PASSWORD}@infisical-db:5432/infisical
+      REDIS_URL: redis://infisical-redis:6379
+      SITE_URL: http://localhost:${INFISICAL_PORT:-8085}
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      infisical-db:
+        condition: service_healthy
+      infisical-redis:
+        condition: service_started
+    labels:
+      dm.protected: "true"
+
+  infisical-db:
+    image: postgres:16-alpine
+    container_name: dm-infisical-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: infisical
+      POSTGRES_PASSWORD: ${INFISICAL_DB_PASSWORD}
+      POSTGRES_DB: infisical
+    volumes:
+      - infisical-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infisical"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    labels:
+      dm.protected: "true"
+
+  infisical-redis:
+    image: redis:7-alpine
+    container_name: dm-infisical-redis
+    restart: unless-stopped
+    volumes:
+      - infisical-redis:/data
+    labels:
+      dm.protected: "true"
+
+volumes:
+  infisical-db:
+  infisical-redis:
