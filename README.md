@@ -68,7 +68,15 @@ This project is licensed under the [MIT License](LICENSE) — free to use, modif
 </p>
 
 <p align="center">
+  <img src="reference-images/Container_Expanded.png" alt="Containers overview" width="800"/>
+</p>
+
+<p align="center">
   <img src="reference-images/Stacks.png" alt="Stacks management view" width="800"/>
+</p>
+
+<p align="center">
+  <img src="reference-images/Stack_Expanded.png" alt="Stacks management view" width="800"/>
 </p>
 
 <p align="center">
