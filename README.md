@@ -5,6 +5,7 @@ A self-hosted dashboard for monitoring and managing Docker containers, built for
 ## Features
 
 - View and manage Docker containers running on the host (via `docker.sock`)
+- Optional **Kubernetes** page (pods, nodes, namespaces + metrics-server CPU/mem) via `docker-compose.k8s.yml`
 - Spin up new stacks by generating and writing `docker-compose` files
 - Role-based login: **admin** (full control) and **user** (read-only)
 - Secrets managed through a self-hosted [Infisical](https://infisical.com/) instance rather than plaintext `.env` files
@@ -44,6 +45,11 @@ A self-hosted dashboard for monitoring and managing Docker containers, built for
    docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
    ```
    Set `STACKS_DIR` in `.env` to a path under your home directory and share it in Docker Desktop → Settings → Resources → File sharing. Metal GPU metrics are not available inside Linux containers on Mac. On Linux, the dashboard covers NVIDIA, AMD (amdgpu), Intel iGPU/Arc, and hybrid Intel+NVIDIA / Intel+AMD hosts.
+
+   **Kubernetes (optional):** mount your kubeconfig and enable the overlay (read-only; needs metrics-server for live CPU/mem):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.k8s.yml up -d --build
+   ```
 
 4. The dashboard should now be available at `http://localhost:<port>`.
 

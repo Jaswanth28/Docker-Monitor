@@ -9,6 +9,7 @@ import StackMonitorPage from "@/pages/stack-monitor"
 import StackEditorPage from "@/pages/stack-editor"
 import ResourcesPage from "@/pages/resources"
 import SystemPage from "@/pages/system"
+import KubernetesPage from "@/pages/kubernetes"
 import { Loader2 } from "lucide-react"
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
         <Route path="/stacks/:name" element={<StackMonitorPage />} />
         <Route path="/stacks/:name/edit" element={<StackEditorPage />} />
         <Route path="/resources" element={<ResourcesPage />} />
+        <Route path="/kubernetes" element={<KubernetesPage />} />
         <Route path="/system" element={<SystemPage />} />
         <Route path="*" element={<Navigate to="/containers" replace />} />
       </Route>

@@ -124,6 +124,42 @@ export interface Overview {
 }
 export interface Health { ok: boolean; secrets: { source: string; error: string | null; missing: string[]; infisical_configured: boolean; viewer_enabled: boolean } }
 
+export interface K8sStatus {
+  enabled: boolean
+  connected: boolean
+  metrics_available: boolean
+  error: string | null
+  version?: string | null
+  platform?: string | null
+  in_cluster?: boolean
+  kubeconfig?: string | null
+  context?: string | null
+}
+export interface K8sNamespace { name: string; status: string; labels: Record<string, string> }
+export interface K8sNode {
+  name: string; ready: boolean; roles: string[]
+  cpu_capacity: number; mem_capacity: number
+  cpu_allocatable: number; mem_allocatable: number
+  cpu_usage?: number | null; mem_usage?: number | null
+  kubelet_version?: string | null; os_image?: string | null; architecture?: string | null
+}
+export interface K8sPod {
+  name: string; namespace: string; uid: string; phase: string
+  node: string | null; ready: string; restarts: number; images: string[]
+  cpu_cores?: number | null; mem_bytes?: number | null
+  qos?: string | null; created?: string | null
+}
+export interface K8sOverview {
+  status: K8sStatus
+  namespaces: number
+  nodes: K8sNode[]
+  pods: K8sPod[]
+  counts: {
+    pods?: number; running?: number; pending?: number; failed?: number
+    nodes?: number; nodes_ready?: number
+  }
+}
+
 const TOKEN_KEY = "dm.token"
 export const token = {
   get: () => localStorage.getItem(TOKEN_KEY),
@@ -200,4 +236,11 @@ export const api = {
   deleteNetwork: (id: string) => request<{ ok: boolean }>(`/networks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   prune: (what: string) => request<Record<string, unknown>>(`/prune/${what}`, { method: "POST" }),
   system: () => request<SystemInfo>("/system"),
+
+  k8sStatus: () => request<K8sStatus>("/k8s/status"),
+  k8sOverview: () => request<K8sOverview>("/k8s/overview"),
+  k8sNamespaces: () => request<K8sNamespace[]>("/k8s/namespaces"),
+  k8sNodes: () => request<K8sNode[]>("/k8s/nodes"),
+  k8sPods: (namespace?: string) =>
+    request<K8sPod[]>(`/k8s/pods${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
 }

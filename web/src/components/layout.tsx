@@ -1,30 +1,34 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { Boxes, Container, HardDrive, Activity, LogOut, Moon, Sun, ShieldCheck, Eye, Menu, X } from "lucide-react"
+import { Boxes, Container, HardDrive, Activity, LogOut, Moon, Sun, ShieldCheck, Eye, Menu, X, Hexagon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Logo } from "@/components/logo"
 import { useAuth } from "@/hooks/use-auth"
 import { useTheme } from "@/hooks/use-theme"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+import { useQuery } from "@tanstack/react-query"
 
-const nav = [
+const baseNav = [
   { to: "/containers", label: "Containers", icon: Container },
   { to: "/stacks", label: "Stacks", icon: Boxes },
   { to: "/resources", label: "Images & Volumes", icon: HardDrive },
+  { to: "/kubernetes", label: "Kubernetes", icon: Hexagon },
   { to: "/system", label: "System", icon: Activity },
 ]
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth()
   const { theme, toggle } = useTheme()
+  const k8s = useQuery({ queryKey: ["k8s-status"], queryFn: api.k8sStatus, staleTime: 30_000, refetchInterval: 60_000 })
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-4 font-semibold">
         <Logo size={26} /> Docker Monitor
       </div>
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain p-2">
-        {nav.map(({ to, label, icon: Icon }) => (
+        {baseNav.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -34,6 +38,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             }
           >
             <Icon className="size-4 shrink-0" /> {label}
+            {to === "/kubernetes" && k8s.data?.enabled && k8s.data.connected && (
+              <Badge variant="success" className="ml-auto text-[10px]">on</Badge>
+            )}
           </NavLink>
         ))}
       </nav>
