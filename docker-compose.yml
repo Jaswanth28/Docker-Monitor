@@ -30,6 +30,12 @@ services:
       # Read-only view of the WSL root so the System page can report host disk usage.
       - /:/hostfs:ro
     pid: host   # lets /proc/stat, /proc/meminfo and loadavg reflect the WSL VM, not the container
+    # CAP_SYS_ADMIN + nsenter → host nvidia-smi / systemctl (daemon-reload, restart docker)
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
     depends_on:
       - infisical
     labels:

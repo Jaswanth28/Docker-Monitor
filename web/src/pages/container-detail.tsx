@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ArrowLeft, Cpu, MemoryStick, HardDrive, Network, Play, Square, RotateCw, Trash2, Activity, Boxes, Skull, Pause } from "lucide-react"
+import { ArrowLeft, Cpu, MemoryStick, HardDrive, Network, Play, Square, RotateCw, Trash2, Activity, Boxes, Skull, Pause, CircuitBoard } from "lucide-react"
 import { api } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useBackTo } from "@/hooks/use-back"
@@ -88,11 +88,18 @@ export default function ContainerDetailPage() {
       </div>
 
       {/* stat tiles */}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile icon={<Cpu className="size-3.5" />} label="CPU" value={cur ? `${cur.cpu_percent.toFixed(1)}%` : "—"} sub={`limit: ${cpuLimit} · pids ${cur?.pids ?? 0}`}
           meter={cur ? { value: cur.cpu_percent, max: 100 } : undefined} spark={hist.map((h) => h.cpu_percent)} sparkFormat={(v) => `${v.toFixed(1)}%`} />
         <StatTile icon={<MemoryStick className="size-3.5" />} label="Memory" value={cur ? formatBytes(cur.mem_usage) : "—"} sub={`${cur ? cur.mem_percent.toFixed(1) : 0}% of ${memLimitText}`}
           meter={cur ? { value: cur.mem_percent, max: 100 } : undefined} spark={hist.map((h) => h.mem_usage)} sparkFormat={formatBytes} />
+        <StatTile icon={<CircuitBoard className="size-3.5" />} label="GPU memory"
+          value={(cur?.gpu_mem_used ?? 0) > 0 ? formatBytes(cur!.gpu_mem_used!) : "—"}
+          sub={(cur?.gpu_mem_used ?? 0) > 0
+            ? `${(cur?.gpu_mem_percent ?? 0).toFixed(1)}% of host VRAM · GPU ${(cur?.gpu_indexes ?? []).join(", ") || "?"}`
+            : "not using GPU"}
+          meter={(cur?.gpu_mem_used ?? 0) > 0 ? { value: cur!.gpu_mem_percent ?? 0, max: 100 } : undefined}
+          spark={hist.map((h) => h.gpu_mem_used ?? 0)} sparkFormat={formatBytes} />
         <StatTile icon={<HardDrive className="size-3.5" />} label="Storage" value={formatBytes(d.storage.size_rw)} sub={<>writable layer · rootfs {formatBytes(d.storage.size_rootfs)}{cur ? <> · disk r {formatBytes(cur.blk_read)} / w {formatBytes(cur.blk_write)}</> : null}</>} />
         <StatTile icon={<Network className="size-3.5" />} label="Network" value={cur ? <span className="text-lg">↓ {rate(cur.net_rx_rate)} <span className="text-muted-foreground">·</span> ↑ {rate(cur.net_tx_rate)}</span> : "—"}
           sub={cur ? `total rx ${formatBytes(cur.net_rx)} · tx ${formatBytes(cur.net_tx)}` : undefined} spark={hist.map((h) => h.net_rx_rate + h.net_tx_rate)} sparkFormat={rate} />
@@ -110,9 +117,10 @@ export default function ContainerDetailPage() {
       {/* history charts */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Activity className="size-4" /> Last {Math.round(hist.length * 5 / 60) || "<1"} min</CardTitle><CardDescription>Sampled every 5 s; hover for values.</CardDescription></CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-3">
+        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <div><div className="text-muted-foreground mb-1 text-xs">CPU %</div><Sparkline data={hist.map((h) => h.cpu_percent)} height={80} format={(v) => `${v.toFixed(1)}%`} label="CPU history" /></div>
           <div><div className="text-muted-foreground mb-1 text-xs">Memory</div><Sparkline data={hist.map((h) => h.mem_usage)} height={80} format={formatBytes} label="Memory history" /></div>
+          <div><div className="text-muted-foreground mb-1 text-xs">GPU memory</div><Sparkline data={hist.map((h) => h.gpu_mem_used ?? 0)} height={80} format={formatBytes} label="GPU history" /></div>
           <div><div className="text-muted-foreground mb-1 text-xs">Network (rx+tx)</div><Sparkline data={hist.map((h) => h.net_rx_rate + h.net_tx_rate)} height={80} format={rate} label="Network history" /></div>
         </CardContent>
       </Card>

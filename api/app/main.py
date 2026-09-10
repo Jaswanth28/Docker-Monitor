@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from . import docker_service as dk
 from . import stacks_service as st
 from .auth import User, authenticate, current_user, require_admin, ws_user
+from .host_ctl import docker_control
 from .metrics import collector
 from .secrets import store
 
@@ -296,6 +297,12 @@ async def system_overview(top: int = 8):
 @app.post("/api/system/df/refresh", dependencies=[Depends(require_admin)])
 async def system_df_refresh():
     return await run_in_threadpool(collector.df, True)
+
+
+@app.post("/api/system/docker/{action}", dependencies=[Depends(require_admin)])
+async def system_docker_control(action: str):
+    """Run systemctl daemon-reload or restart docker on the host (via nsenter)."""
+    return await run_in_threadpool(docker_control, action)
 
 
 # ───────────────────────────── static frontend ─────────────────────────────

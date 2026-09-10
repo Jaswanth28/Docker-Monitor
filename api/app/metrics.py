@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .docker_service import _calc_cpu, client
+from .gpu import sample_gpus
 
 log = logging.getLogger("dm.metrics")
 
@@ -57,6 +58,7 @@ class Collector:
         self.container_history: dict[str, deque[dict]] = {}
         self.container_meta: dict[str, dict] = {}
         self.host_history: deque[dict] = deque(maxlen=HISTORY)
+        self.gpu_snapshot: dict[str, Any] | None = None
         self._prev_ticks: tuple[int, int] | None = None
         self._prev_net: dict[str, tuple[float, int, int]] = {}
         self._df: dict | None = None
@@ -127,6 +129,9 @@ class Collector:
             "blk_read": blk_r,
             "blk_write": blk_w,
             "pids": (s.get("pids_stats") or {}).get("current", 0),
+            "gpu_mem_used": 0,
+            "gpu_mem_percent": 0.0,
+            "gpu_indexes": [],
         }
 
     def _sample(self) -> None:
@@ -140,9 +145,30 @@ class Collector:
                 "image": c.attrs.get("Config", {}).get("Image"),
             }
         results = list(self._pool.map(self._sample_container, containers))
+
+        # GPU snapshot once per tick; fold VRAM into each container sample
+        try:
+            gpu = sample_gpus([c.id for c in containers])
+        except Exception as exc:  # noqa: BLE001
+            log.debug("gpu sample failed: %s", exc)
+            gpu = {
+                "available": False, "gpus": [], "processes": [], "by_container": {},
+                "totals": {"mem_used": 0, "mem_total": 0, "mem_percent": 0.0, "util_percent": 0.0, "count": 0},
+                "error": str(exc),
+            }
+        self.gpu_snapshot = gpu
+        by_ctr = gpu.get("by_container") or {}
+        gpu_total = (gpu.get("totals") or {}).get("mem_total") or 0
+
         for c, r in zip(containers, results):
-            if r:
-                self.container_history.setdefault(c.id, deque(maxlen=HISTORY)).append(r)
+            if not r:
+                continue
+            g = by_ctr.get(c.id) or by_ctr.get(c.id[:12])
+            if g:
+                r["gpu_mem_used"] = g["mem_used"]
+                r["gpu_indexes"] = g.get("gpu_indexes") or []
+                r["gpu_mem_percent"] = round(g["mem_used"] / gpu_total * 100, 2) if gpu_total else 0.0
+            self.container_history.setdefault(c.id, deque(maxlen=HISTORY)).append(r)
         # drop history for containers that are gone (keep stopped ones a while)
         for cid in list(self.container_history):
             if cid not in running_ids:
@@ -151,9 +177,9 @@ class Collector:
                     del self.container_history[cid]
                     self.container_meta.pop(cid, None)
                     self._prev_net.pop(cid, None)
-        self.host_history.append(self._sample_host())
+        self.host_history.append(self._sample_host(gpu))
 
-    def _sample_host(self) -> dict:
+    def _sample_host(self, gpu: dict | None = None) -> dict:
         total, idle = _read_cpu_ticks()
         cpu = 0.0
         if self._prev_ticks:
@@ -168,6 +194,8 @@ class Collector:
             load1, load5, load15 = os.getloadavg()
         except OSError:
             load1 = load5 = load15 = 0.0
+        g = gpu or self.gpu_snapshot or {}
+        totals = g.get("totals") or {}
         return {
             "t": time.time(),
             "cpu_percent": cpu,
@@ -175,6 +203,12 @@ class Collector:
             "mem_used": mtotal - mavail,
             "mem_percent": round((mtotal - mavail) / mtotal * 100, 1) if mtotal else 0,
             "load": [load1, load5, load15],
+            "gpu_available": bool(g.get("available")),
+            "gpu_util_percent": totals.get("util_percent") or 0.0,
+            "gpu_mem_used": totals.get("mem_used") or 0,
+            "gpu_mem_total": totals.get("mem_total") or 0,
+            "gpu_mem_percent": totals.get("mem_percent") or 0.0,
+            "gpu_count": totals.get("count") or 0,
         }
 
     # ── docker system df (cached) ───────────────────────────────
@@ -244,12 +278,21 @@ class Collector:
             e.update(self.container_meta.get(e["id"], {}))
         by_cpu = sorted(latest, key=lambda e: e["cpu_percent"], reverse=True)[:top]
         by_mem = sorted(latest, key=lambda e: e["mem_usage"], reverse=True)[:top]
+        by_gpu = sorted(
+            [e for e in latest if e.get("gpu_mem_used")],
+            key=lambda e: e.get("gpu_mem_used") or 0,
+            reverse=True,
+        )[:top]
         stacks: dict[str, dict] = {}
         for e in latest:
             key = e.get("project") or "(no stack)"
-            s = stacks.setdefault(key, {"name": key, "cpu_percent": 0.0, "mem_usage": 0, "containers": 0, "net_rx_rate": 0.0, "net_tx_rate": 0.0})
+            s = stacks.setdefault(key, {
+                "name": key, "cpu_percent": 0.0, "mem_usage": 0, "gpu_mem_used": 0,
+                "containers": 0, "net_rx_rate": 0.0, "net_tx_rate": 0.0,
+            })
             s["cpu_percent"] = round(s["cpu_percent"] + e["cpu_percent"], 2)
             s["mem_usage"] += e["mem_usage"]
+            s["gpu_mem_used"] += e.get("gpu_mem_used") or 0
             s["containers"] += 1
             s["net_rx_rate"] += e["net_rx_rate"]
             s["net_tx_rate"] += e["net_tx_rate"]
@@ -257,20 +300,57 @@ class Collector:
             df = self.df()
         except Exception as exc:  # noqa: BLE001
             df = {"error": str(exc)}
+        gpu = self.gpu_snapshot or {
+            "available": False, "gpus": [], "processes": [], "by_container": {},
+            "totals": {"mem_used": 0, "mem_total": 0, "mem_percent": 0.0, "util_percent": 0.0, "count": 0},
+            "error": None,
+        }
+        # Enrich GPU processes / by_container with container names for the UI
+        procs = []
+        for p in gpu.get("processes") or []:
+            cid = p.get("container_id")
+            meta = self.container_meta.get(cid or "") or {}
+            if not meta and cid:
+                for full, m in self.container_meta.items():
+                    if full.startswith(cid) or cid.startswith(full[:12]):
+                        meta = m
+                        cid = full
+                        break
+            procs.append({**p, "container_id": cid, "container_name": meta.get("name"), "project": meta.get("project")})
+        gpu_users = []
+        for cid, agg in (gpu.get("by_container") or {}).items():
+            meta = self.container_meta.get(cid) or {}
+            if not meta:
+                for full, m in self.container_meta.items():
+                    if full.startswith(cid) or cid.startswith(full[:12]):
+                        meta = m
+                        cid = full
+                        break
+            gpu_users.append({
+                **agg,
+                "container_id": cid,
+                "name": meta.get("name") or cid[:12],
+                "project": meta.get("project"),
+                "service": meta.get("service"),
+            })
+        gpu_users.sort(key=lambda e: e["mem_used"], reverse=True)
         return {
             "host": host[-1] if host else None,
             "host_history": host,
             "disk": _disk(HOST_FS) or _disk("/"),
             "disk_is_host": os.path.isdir(HOST_FS),
             "docker_df": df,
+            "gpu": {**gpu, "processes": procs, "containers": gpu_users},
             "top_cpu": by_cpu,
             "top_mem": by_mem,
+            "top_gpu": by_gpu,
             "containers": sorted(latest, key=lambda e: e["mem_usage"], reverse=True),
             "stacks": sorted(stacks.values(), key=lambda s: s["mem_usage"], reverse=True),
             "totals": {
                 "containers_sampled": len(latest),
                 "cpu_percent": round(sum(e["cpu_percent"] for e in latest), 2),
                 "mem_usage": sum(e["mem_usage"] for e in latest),
+                "gpu_mem_used": sum(e.get("gpu_mem_used") or 0 for e in latest),
             },
             "collector": {"interval": INTERVAL, "history": HISTORY, "error": self.last_error, "uptime": time.time() - self.started_at},
         }

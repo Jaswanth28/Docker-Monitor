@@ -36,18 +36,18 @@ export default function StacksPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Stacks</h1>
+          <h1 className="text-xl font-semibold sm:text-2xl">Stacks</h1>
           <p className="text-muted-foreground text-sm">Compose projects. Managed stacks live in your stacks folder.</p>
         </div>
-        {isAdmin && <Button asChild><Link to="/stacks/new"><Plus /> New stack</Link></Button>}
+        {isAdmin && <Button asChild className="w-fit"><Link to="/stacks/new"><Plus /> New stack</Link></Button>}
       </div>
 
       {stacks.isLoading && <p className="text-muted-foreground">Loading…</p>}
       {stacks.error && <p className="text-destructive">{(stacks.error as Error).message}</p>}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {(stacks.data ?? []).map((s) => {
           const busy = isBusy(s.name)
           return (

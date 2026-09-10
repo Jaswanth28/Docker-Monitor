@@ -67,7 +67,7 @@ export default function ResourcesPage() {
             <TabsTrigger value="networks">Networks</TabsTrigger>
           </TabsList>
           {isAdmin && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" onClick={() => prune.mutate("images")}><Eraser /> Prune dangling images</Button>
               <Button variant="outline" size="sm" onClick={() => prune.mutate("containers")}><Eraser /> Prune stopped containers</Button>
               <Button variant="outline" size="sm" onClick={() => prune.mutate("volumes")}><Eraser /> Prune unused volumes</Button>
@@ -77,7 +77,7 @@ export default function ResourcesPage() {
         </div>
 
         <TabsContent value="images">
-          <Card className="py-0"><CardContent className="px-0">
+          <Card className="py-0"><CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Tags</TableHead><TableHead>ID</TableHead><TableHead>Size</TableHead><TableHead>Created</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>
@@ -107,7 +107,7 @@ export default function ResourcesPage() {
         </TabsContent>
 
         <TabsContent value="volumes">
-          <Card className="py-0"><CardContent className="px-0">
+          <Card className="py-0"><CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Name</TableHead><TableHead>Driver</TableHead><TableHead>Mountpoint</TableHead><TableHead>Created</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>
@@ -137,7 +137,7 @@ export default function ResourcesPage() {
         </TabsContent>
 
         <TabsContent value="networks">
-          <Card className="py-0"><CardContent className="px-0">
+          <Card className="py-0"><CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Name</TableHead><TableHead>ID</TableHead><TableHead>Driver</TableHead><TableHead>Scope</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>

@@ -21,8 +21,8 @@ import { LogsDialog } from "@/components/logs-dialog"
 function Meter({ value, label }: { value: number; label: string }) {
   const color = value > 85 ? "bg-red-500" : value > 60 ? "bg-amber-500" : "bg-emerald-500"
   return (
-    <div className="w-28">
-      <div className="mb-0.5 flex justify-between text-[11px] text-muted-foreground"><span>{label}</span><span>{value.toFixed(1)}%</span></div>
+    <div className="w-20 sm:w-28">
+      <div className="mb-0.5 flex justify-between text-[11px] text-muted-foreground"><span className="truncate">{label}</span><span className="shrink-0">{value.toFixed(1)}%</span></div>
       <div className="bg-muted h-1.5 overflow-hidden rounded-full"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, value)}%` }} /></div>
     </div>
   )
@@ -60,39 +60,41 @@ export default function ContainersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Containers</h1>
+          <h1 className="text-xl font-semibold sm:text-2xl">Containers</h1>
           <p className="text-muted-foreground text-sm">{running} running · {(containers.data?.length ?? 0) - running} stopped</p>
         </div>
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <Search className="text-muted-foreground absolute top-2.5 left-2.5 size-4" />
           <Input placeholder="Filter by name, image, stack…" className="pl-8" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </div>
 
       <Card className="py-0">
-        <CardContent className="px-0">
+        <CardContent className="overflow-x-auto px-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">Name</TableHead>
                 <TableHead>State</TableHead>
-                <TableHead>Image</TableHead>
-                <TableHead>Stack</TableHead>
-                <TableHead>Ports</TableHead>
+                <TableHead className="hidden lg:table-cell">Image</TableHead>
+                <TableHead className="hidden md:table-cell">Stack</TableHead>
+                <TableHead className="hidden xl:table-cell">Ports</TableHead>
                 <TableHead>CPU</TableHead>
                 <TableHead>Memory</TableHead>
-                <TableHead>Uptime</TableHead>
+                <TableHead className="hidden sm:table-cell">GPU</TableHead>
+                <TableHead className="hidden md:table-cell">Uptime</TableHead>
                 <TableHead className="pr-4 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {containers.isLoading && <TableRow><TableCell colSpan={9} className="text-muted-foreground p-8 text-center">Loading…</TableCell></TableRow>}
-              {containers.error && <TableRow><TableCell colSpan={9} className="text-destructive p-8 text-center">{(containers.error as Error).message}</TableCell></TableRow>}
+              {containers.isLoading && <TableRow><TableCell colSpan={10} className="text-muted-foreground p-8 text-center">Loading…</TableCell></TableRow>}
+              {containers.error && <TableRow><TableCell colSpan={10} className="text-destructive p-8 text-center">{(containers.error as Error).message}</TableCell></TableRow>}
               {rows.map((c) => {
                 const s = statsById[c.id]
                 const busy = act.isPending && act.variables?.id === c.id
+                const gpuMem = s?.gpu_mem_used ?? 0
                 return (
                   <TableRow key={c.id}>
                     <TableCell className="pl-4">
@@ -100,9 +102,9 @@ export default function ContainersPage() {
                       <div className="text-muted-foreground font-mono text-xs">{c.short_id}{c.protected && <Badge variant="outline" className="ml-2 text-[10px]">dashboard</Badge>}</div>
                     </TableCell>
                     <TableCell><StateBadge state={c.state} health={c.health} /></TableCell>
-                    <TableCell className="max-w-56 truncate font-mono text-xs" title={c.image}>{c.image}</TableCell>
-                    <TableCell className="text-xs">{c.project ? <span>{c.project}<span className="text-muted-foreground"> / {c.service}</span></span> : <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="hidden max-w-56 truncate font-mono text-xs lg:table-cell" title={c.image}>{c.image}</TableCell>
+                    <TableCell className="hidden text-xs md:table-cell">{c.project ? <span>{c.project}<span className="text-muted-foreground"> / {c.service}</span></span> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="hidden text-xs xl:table-cell">
                       {c.ports.filter((p) => p.host_port).slice(0, 3).map((p) => (
                         <a key={p.private + p.host_port} href={`http://localhost:${p.host_port}`} target="_blank" rel="noreferrer" className="mr-2 font-mono hover:underline">{p.host_port}→{p.private}</a>
                       ))}
@@ -110,13 +112,18 @@ export default function ContainersPage() {
                     </TableCell>
                     <TableCell>{s ? <Meter value={s.cpu_percent} label="cpu" /> : <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell>{s ? <Tooltip><TooltipTrigger asChild><div><Meter value={s.mem_percent} label={formatBytes(s.mem_usage)} /></div></TooltipTrigger><TooltipContent>limit {formatBytes(s.mem_limit)} · rx {formatBytes(s.net_rx)} · tx {formatBytes(s.net_tx)}</TooltipContent></Tooltip> : <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-xs">{c.state === "running" ? timeAgo(c.started_at) : <span className="text-muted-foreground">{c.status}</span>}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {s && gpuMem > 0
+                        ? <Tooltip><TooltipTrigger asChild><div><Meter value={s.gpu_mem_percent ?? 0} label={formatBytes(gpuMem)} /></div></TooltipTrigger><TooltipContent>GPU {(s.gpu_indexes ?? []).join(", ") || "?"} · VRAM {formatBytes(gpuMem)}</TooltipContent></Tooltip>
+                        : <span className="text-muted-foreground text-xs">—</span>}
+                    </TableCell>
+                    <TableCell className="hidden text-xs md:table-cell">{c.state === "running" ? timeAgo(c.started_at) : <span className="text-muted-foreground">{c.status}</span>}</TableCell>
                     <TableCell className="pr-4 text-right">
                       <div className="flex justify-end gap-1">
                         <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" onClick={() => setLogsFor(c)}><ScrollText /></Button></TooltipTrigger><TooltipContent>Logs</TooltipContent></Tooltip>
                         {isAdmin && c.state !== "running" && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={busy} onClick={() => act.mutate({ id: c.id, action: "start" })}><Play /></Button></TooltipTrigger><TooltipContent>Start</TooltipContent></Tooltip>}
                         {isAdmin && c.state === "running" && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={busy || c.protected} onClick={() => act.mutate({ id: c.id, action: "stop" })}><Square /></Button></TooltipTrigger><TooltipContent>Stop</TooltipContent></Tooltip>}
-                        {isAdmin && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" disabled={busy} onClick={() => act.mutate({ id: c.id, action: "restart" })}><RotateCw className={busy ? "animate-spin" : ""} /></Button></TooltipTrigger><TooltipContent>Restart</TooltipContent></Tooltip>}
+                        {isAdmin && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" disabled={busy} onClick={() => act.mutate({ id: c.id, action: "restart" })}><RotateCw className={busy ? "animate-spin" : ""} /></Button></TooltipTrigger><TooltipContent>Restart</TooltipContent></Tooltip>}
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm"><MoreHorizontal /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
@@ -124,6 +131,7 @@ export default function ContainersPage() {
                             {isAdmin && (
                               <>
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem className="sm:hidden" disabled={busy} onClick={() => act.mutate({ id: c.id, action: "restart" })}><RotateCw /> Restart</DropdownMenuItem>
                                 {c.state === "paused"
                                   ? <DropdownMenuItem onClick={() => act.mutate({ id: c.id, action: "unpause" })}><Play /> Unpause</DropdownMenuItem>
                                   : <DropdownMenuItem disabled={c.state !== "running" || c.protected} onClick={() => act.mutate({ id: c.id, action: "pause" })}><Pause /> Pause</DropdownMenuItem>}
@@ -138,7 +146,7 @@ export default function ContainersPage() {
                   </TableRow>
                 )
               })}
-              {!containers.isLoading && rows.length === 0 && <TableRow><TableCell colSpan={9} className="text-muted-foreground p-8 text-center">No containers</TableCell></TableRow>}
+              {!containers.isLoading && rows.length === 0 && <TableRow><TableCell colSpan={10} className="text-muted-foreground p-8 text-center">No containers</TableCell></TableRow>}
             </TableBody>
           </Table>
         </CardContent>
