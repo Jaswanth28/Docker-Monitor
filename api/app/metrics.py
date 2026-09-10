@@ -209,6 +209,7 @@ class Collector:
             "gpu_mem_total": totals.get("mem_total") or 0,
             "gpu_mem_percent": totals.get("mem_percent") or 0.0,
             "gpu_count": totals.get("count") or 0,
+            "gpu_unified_memory": bool(g.get("unified_memory")),
         }
 
     # ── docker system df (cached) ───────────────────────────────

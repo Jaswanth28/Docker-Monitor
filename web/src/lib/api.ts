@@ -46,7 +46,7 @@ export interface ContainerDetail {
 export interface HostSample {
   t: number; cpu_percent: number; mem_total: number; mem_used: number; mem_percent: number; load: number[]
   gpu_available?: boolean; gpu_util_percent?: number; gpu_mem_used?: number; gpu_mem_total?: number
-  gpu_mem_percent?: number; gpu_count?: number
+  gpu_mem_percent?: number; gpu_count?: number; gpu_unified_memory?: boolean
 }
 export interface GpuDevice {
   index: number; uuid: string; name: string; util_percent: number
@@ -68,6 +68,9 @@ export interface GpuSnapshot {
   containers: GpuContainerUsage[]
   by_container: Record<string, { container_id: string; mem_used: number; processes: number; gpu_indexes: number[] }>
   totals: { mem_used: number; mem_total: number; mem_percent: number; util_percent: number; count: number }
+  unified_memory?: boolean
+  host_mem_total?: number | null
+  host_mem_used?: number | null
   error: string | null
 }
 export interface TopEntry extends Sample { id: string; name: string; project: string | null; service: string | null; image: string }

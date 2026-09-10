@@ -96,8 +96,28 @@ def _match_cid(raw: str | None, known: dict[str, str]) -> str | None:
     return None
 
 
+def _host_mem_bytes() -> tuple[int, int]:
+    """Return (MemTotal, MemTotal-MemAvailable) from /proc/meminfo in bytes."""
+    total = avail = 0
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1]) * 1024
+                elif line.startswith("MemAvailable:"):
+                    avail = int(line.split()[1]) * 1024
+    except OSError:
+        return 0, 0
+    return total, max(0, total - avail)
+
+
 def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
-    """Return current GPU snapshot, or {available: False, ...} when no NVIDIA GPU."""
+    """Return current GPU snapshot, or {available: False, ...} when no NVIDIA GPU.
+
+    On GB10 / DGX Spark (unified memory), nvidia-smi reports memory.used/total as
+    [N/A]. We detect that and fall back to: process used_gpu_memory for attributed
+    use, and host MemTotal as the shared pool size.
+    """
     known: dict[str, str] = {}
     for cid in container_ids or []:
         known[cid] = cid
@@ -120,19 +140,25 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
             "processes": [],
             "by_container": {},
             "totals": {"mem_used": 0, "mem_total": 0, "util_percent": 0.0, "mem_percent": 0.0, "count": 0},
+            "unified_memory": False,
             "error": hint,
         }
 
     gpus: list[dict[str, Any]] = []
     uuid_to_index: dict[str, int] = {}
+    fb_na = False
     for line in gpu_out.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) < 6:
             continue
         idx = int(_parse_num(parts[0]) or 0)
         uuid = parts[1]
-        mem_used = int((_parse_num(parts[4]) or 0) * 1024 * 1024)  # MiB → bytes
-        mem_total = int((_parse_num(parts[5]) or 0) * 1024 * 1024)
+        used_mib = _parse_num(parts[4])
+        total_mib = _parse_num(parts[5])
+        if used_mib is None or total_mib is None:
+            fb_na = True
+        mem_used = int((used_mib or 0) * 1024 * 1024)
+        mem_total = int((total_mib or 0) * 1024 * 1024)
         util = _parse_num(parts[3]) or 0.0
         temp = _parse_num(parts[6]) if len(parts) > 6 else None
         power = _parse_num(parts[7]) if len(parts) > 7 else None
@@ -155,6 +181,7 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
     )
     processes: list[dict[str, Any]] = []
     by_container: dict[str, dict[str, Any]] = {}
+    mem_by_uuid: dict[str, int] = {}
 
     if proc_out:
         for line in proc_out.strip().splitlines():
@@ -164,6 +191,7 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
             uuid, pid_s, pname, mem_s = parts[0], parts[1], parts[2], parts[3]
             pid = int(_parse_num(pid_s) or 0)
             mem = int((_parse_num(mem_s) or 0) * 1024 * 1024)
+            mem_by_uuid[uuid] = mem_by_uuid.get(uuid, 0) + mem
             raw_cid = container_id_for_pid(pid) if pid else None
             cid = _match_cid(raw_cid, known) if known else raw_cid
             if not cid and raw_cid:
@@ -198,8 +226,24 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
             "gpu_indexes": sorted(agg["gpu_indexes"]),
         }
 
+    # GB10 / DGX Spark: framebuffer memory queries are N/A — use UMA fallbacks.
+    unified = fb_na or (gpus and all(g["mem_total"] == 0 for g in gpus))
+    host_total, host_used = _host_mem_bytes()
+    if unified:
+        pool = host_total
+        for g in gpus:
+            attributed = mem_by_uuid.get(g["uuid"], 0)
+            g["mem_used"] = attributed
+            g["mem_total"] = pool
+            g["mem_percent"] = round(attributed / pool * 100, 1) if pool else 0.0
+            g["unified_memory"] = True
+
     mem_used = sum(g["mem_used"] for g in gpus)
     mem_total = sum(g["mem_total"] for g in gpus)
+    # Avoid double-counting host pool when multiple UMA GPUs share one DRAM
+    if unified and gpus:
+        mem_total = gpus[0]["mem_total"]
+        mem_used = sum(g["mem_used"] for g in gpus)
     util_avg = round(sum(g["util_percent"] for g in gpus) / len(gpus), 1) if gpus else 0.0
 
     return {
@@ -207,6 +251,9 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
         "gpus": gpus,
         "processes": processes,
         "by_container": by_container_out,
+        "unified_memory": unified,
+        "host_mem_total": host_total if unified else None,
+        "host_mem_used": host_used if unified else None,
         "totals": {
             "mem_used": mem_used,
             "mem_total": mem_total,
