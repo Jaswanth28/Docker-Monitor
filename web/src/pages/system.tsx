@@ -119,7 +119,7 @@ export default function SystemPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Cpu className="size-4" /> GPU compute</CardTitle>
-              <CardDescription>SM / core utilization from nvidia-smi (how busy the GPU is)</CardDescription>
+              <CardDescription>SM / core utilization</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {(gpu?.gpus ?? []).map((g) => (

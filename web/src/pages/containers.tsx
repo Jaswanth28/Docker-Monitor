@@ -95,6 +95,7 @@ export default function ContainersPage() {
                 const s = statsById[c.id]
                 const busy = act.isPending && act.variables?.id === c.id
                 const gpuMem = s?.gpu_mem_used ?? 0
+                const gpuUtil = s?.gpu_util_percent ?? 0
                 return (
                   <TableRow key={c.id}>
                     <TableCell className="pl-4">
@@ -113,8 +114,8 @@ export default function ContainersPage() {
                     <TableCell>{s ? <Meter value={s.cpu_percent} label="cpu" /> : <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell>{s ? <Tooltip><TooltipTrigger asChild><div><Meter value={s.mem_percent} label={formatBytes(s.mem_usage)} /></div></TooltipTrigger><TooltipContent>limit {formatBytes(s.mem_limit)} · rx {formatBytes(s.net_rx)} · tx {formatBytes(s.net_tx)}</TooltipContent></Tooltip> : <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="hidden sm:table-cell">
-                      {s && gpuMem > 0
-                        ? <Tooltip><TooltipTrigger asChild><div><Meter value={s.gpu_mem_percent ?? 0} label={formatBytes(gpuMem)} /></div></TooltipTrigger><TooltipContent>GPU {(s.gpu_indexes ?? []).join(", ") || "?"} · VRAM {formatBytes(gpuMem)}</TooltipContent></Tooltip>
+                      {s && (gpuUtil > 0 || gpuMem > 0)
+                        ? <Tooltip><TooltipTrigger asChild><div><Meter value={gpuUtil} label={gpuMem > 0 ? formatBytes(gpuMem) : "util"} /></div></TooltipTrigger><TooltipContent>util {gpuUtil.toFixed(0)}% · mem {formatBytes(gpuMem)} · GPU {(s.gpu_indexes ?? []).join(", ") || "?"}</TooltipContent></Tooltip>
                         : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
                     <TableCell className="hidden text-xs md:table-cell">{c.state === "running" ? timeAgo(c.started_at) : <span className="text-muted-foreground">{c.status}</span>}</TableCell>

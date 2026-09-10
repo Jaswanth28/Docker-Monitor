@@ -9,7 +9,7 @@ export interface Container {
 }
 export interface Stats {
   id: string; cpu_percent: number; mem_usage: number; mem_limit: number; mem_percent: number
-  net_rx: number; net_tx: number; gpu_mem_used?: number; gpu_mem_percent?: number; gpu_indexes?: number[]
+  net_rx: number; net_tx: number; gpu_mem_used?: number; gpu_mem_percent?: number; gpu_util_percent?: number; gpu_indexes?: number[]
 }
 export interface StackContainer { id: string; name: string; state: string; service: string | null }
 export interface Stack {
@@ -28,7 +28,7 @@ export interface SystemInfo {
 export interface Sample {
   t: number; cpu_percent: number; mem_usage: number; mem_limit: number; mem_percent: number
   net_rx: number; net_tx: number; net_rx_rate: number; net_tx_rate: number; blk_read: number; blk_write: number; pids: number
-  gpu_mem_used?: number; gpu_mem_percent?: number; gpu_indexes?: number[]
+  gpu_mem_used?: number; gpu_mem_percent?: number; gpu_util_percent?: number; gpu_indexes?: number[]
 }
 export interface ContainerMetrics { id: string; current: Sample | null; history: Sample[]; meta: { name: string; project: string | null; service: string | null; image: string } | null }
 export interface Mount { type: string; source: string; destination: string; rw: boolean; name: string | null; size: number | null }
@@ -53,13 +53,13 @@ export interface GpuDevice {
   mem_used: number; mem_total: number; mem_percent: number
   temperature_c: number | null; power_w: number | null
 }
-export interface GpuProcess {
-  gpu_uuid: string; gpu_index: number | null; pid: number; process_name: string
-  mem_used: number; container_id: string | null; container_name?: string | null; project?: string | null
-}
 export interface GpuContainerUsage {
   container_id: string; name: string; project: string | null; service: string | null
-  mem_used: number; processes: number; gpu_indexes: number[]
+  mem_used: number; util_percent?: number; processes: number; gpu_indexes: number[]
+}
+export interface GpuProcess {
+  gpu_uuid: string; gpu_index: number | null; pid: number; process_name: string
+  mem_used: number; util_percent?: number; container_id: string | null; container_name?: string | null; project?: string | null
 }
 export interface GpuSnapshot {
   available: boolean
@@ -74,7 +74,7 @@ export interface GpuSnapshot {
   error: string | null
 }
 export interface TopEntry extends Sample { id: string; name: string; project: string | null; service: string | null; image: string }
-export interface StackUsage { name: string; cpu_percent: number; mem_usage: number; gpu_mem_used?: number; containers: number; net_rx_rate: number; net_tx_rate: number }
+export interface StackUsage { name: string; cpu_percent: number; mem_usage: number; gpu_mem_used?: number; gpu_util_percent?: number; containers: number; net_rx_rate: number; net_tx_rate: number }
 export interface DfBucket { count: number; size: number; unused?: number; rootfs?: number }
 export interface StackMetrics {
   current: Sample | null

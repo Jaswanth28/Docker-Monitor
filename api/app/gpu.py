@@ -111,12 +111,46 @@ def _host_mem_bytes() -> tuple[int, int]:
     return total, max(0, total - avail)
 
 
+def _sample_pmon_util() -> dict[int, float]:
+    """Per-PID SM utilization from `nvidia-smi pmon -c 1`.
+
+    Format (space-separated): gpu pid type sm mem enc dec command
+    '#' comment lines are skipped. sm may be '-' when idle/unsupported.
+    """
+    out = _nvidia_smi("pmon", "-c", "1")
+    if not out:
+        return {}
+    by_pid: dict[int, float] = {}
+    for line in out.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        pid = int(_parse_num(parts[1]) or 0)
+        if pid <= 0:
+            continue
+        sm_raw = parts[3]
+        if sm_raw in {"-", "—"}:
+            sm = 0.0
+        else:
+            sm = _parse_num(sm_raw)
+        if sm is None:
+            continue
+        # same pid on multiple GPUs: take max SM%
+        by_pid[pid] = max(by_pid.get(pid, 0.0), float(sm))
+    return by_pid
+
+
 def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
     """Return current GPU snapshot, or {available: False, ...} when no NVIDIA GPU.
 
     On GB10 / DGX Spark (unified memory), nvidia-smi reports memory.used/total as
     [N/A]. We detect that and fall back to: process used_gpu_memory for attributed
     use, and host MemTotal as the shared pool size.
+
+    Per-container compute util comes from `nvidia-smi pmon` SM% mapped via cgroup.
     """
     known: dict[str, str] = {}
     for cid in container_ids or []:
@@ -175,6 +209,8 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
             "power_w": power,
         })
 
+    sm_by_pid = _sample_pmon_util()
+
     proc_out = _nvidia_smi(
         "--query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory",
         "--format=csv,noheader,nounits",
@@ -191,6 +227,7 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
             uuid, pid_s, pname, mem_s = parts[0], parts[1], parts[2], parts[3]
             pid = int(_parse_num(pid_s) or 0)
             mem = int((_parse_num(mem_s) or 0) * 1024 * 1024)
+            sm = sm_by_pid.get(pid, 0.0)
             mem_by_uuid[uuid] = mem_by_uuid.get(uuid, 0) + mem
             raw_cid = container_id_for_pid(pid) if pid else None
             cid = _match_cid(raw_cid, known) if known else raw_cid
@@ -202,6 +239,7 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
                 "pid": pid,
                 "process_name": pname,
                 "mem_used": mem,
+                "util_percent": round(sm, 1),
                 "container_id": cid,
             }
             processes.append(entry)
@@ -209,19 +247,44 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
                 agg = by_container.setdefault(cid, {
                     "container_id": cid,
                     "mem_used": 0,
+                    "util_percent": 0.0,
                     "processes": 0,
                     "gpu_indexes": set(),
                 })
                 agg["mem_used"] += mem
+                agg["util_percent"] = round(agg["util_percent"] + sm, 1)
                 agg["processes"] += 1
                 if entry["gpu_index"] is not None:
                     agg["gpu_indexes"].add(entry["gpu_index"])
+
+    # Also attribute pmon-only PIDs (util without compute-apps row — rare)
+    for pid, sm in sm_by_pid.items():
+        if sm <= 0:
+            continue
+        if any(p["pid"] == pid for p in processes):
+            continue
+        raw_cid = container_id_for_pid(pid)
+        cid = _match_cid(raw_cid, known) if known else raw_cid
+        if not cid and raw_cid:
+            cid = raw_cid
+        if not cid:
+            continue
+        agg = by_container.setdefault(cid, {
+            "container_id": cid,
+            "mem_used": 0,
+            "util_percent": 0.0,
+            "processes": 0,
+            "gpu_indexes": set(),
+        })
+        agg["util_percent"] = round(agg["util_percent"] + sm, 1)
+        agg["processes"] += 1
 
     by_container_out: dict[str, dict[str, Any]] = {}
     for cid, agg in by_container.items():
         by_container_out[cid] = {
             "container_id": cid,
             "mem_used": agg["mem_used"],
+            "util_percent": round(float(agg["util_percent"]), 1),
             "processes": agg["processes"],
             "gpu_indexes": sorted(agg["gpu_indexes"]),
         }

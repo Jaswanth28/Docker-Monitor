@@ -98,7 +98,7 @@ export default function StackMonitorPage() {
       </div>
 
       {/* aggregate stats across the whole stack */}
-      <div className={`grid gap-3 ${gpuAvail ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
+      <div className={`grid gap-3 ${gpuAvail ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-3"}`}>
         <StatTile icon={<Cpu className="size-3.5" />} label="Stack CPU" value={cur ? `${cur.cpu_percent.toFixed(1)}%` : "—"} sub={`summed across ${metrics.data?.containers_sampled ?? 0} sampled containers`}
           spark={hist.map((h) => h.cpu_percent)} sparkFormat={(v) => `${v.toFixed(1)}%`} />
         <StatTile icon={<MemoryStick className="size-3.5" />} label="Stack memory" value={cur ? formatBytes(cur.mem_usage) : "—"} sub="summed working set (RAM)"
@@ -116,6 +116,17 @@ export default function StackMonitorPage() {
             sparkFormat={formatBytes}
           />
         )}
+        {gpuAvail && (
+          <StatTile
+            icon={<CircuitBoard className="size-3.5" />}
+            label="Stack GPU utilization"
+            value={`${(cur?.gpu_util_percent ?? 0).toFixed(0)}%`}
+            sub={`summed process SM util${(cur?.gpu_indexes?.length) ? ` · GPU ${(cur!.gpu_indexes!).join(",")}` : ""}`}
+            meter={{ value: Math.min(100, cur?.gpu_util_percent ?? 0) }}
+            spark={hist.map((h) => h.gpu_util_percent ?? 0)}
+            sparkFormat={(v) => `${v.toFixed(0)}%`}
+          />
+        )}
         <StatTile icon={<Network className="size-3.5" />} label="Stack network" value={cur ? <span className="text-lg">↓ {rate(cur.net_rx_rate)} <span className="text-muted-foreground">·</span> ↑ {rate(cur.net_tx_rate)}</span> : "—"} sub="summed rx/tx rate"
           spark={hist.map((h) => h.net_rx_rate + h.net_tx_rate)} sparkFormat={rate} />
       </div>
@@ -130,6 +141,7 @@ export default function StackMonitorPage() {
             const isOpen = expanded === c.id
             const cbusy = containerAct.isPending && containerAct.variables?.id === c.id
             const gpuMem = cc?.gpu_mem_used ?? 0
+            const gpuUtil = cc?.gpu_util_percent ?? 0
             return (
               <Card key={c.id} className="gap-0 overflow-hidden py-0">
                 <button
@@ -153,10 +165,11 @@ export default function StackMonitorPage() {
                     <MemoryStick className="text-muted-foreground size-3.5" /><Meter value={cc?.mem_percent ?? 0} thin className="w-16 lg:w-20" /><span className="w-14 text-right text-xs tabular-nums lg:w-16">{cc ? formatBytes(cc.mem_usage) : "—"}</span>
                   </div>
                   {gpuAvail && (
-                    <div className="hidden items-center gap-2 lg:flex">
+                    <div className="hidden items-center gap-2 xl:flex">
                       <CircuitBoard className="text-muted-foreground size-3.5" />
-                      <Meter value={cc?.gpu_mem_percent ?? 0} thin className="w-16 lg:w-20" />
-                      <span className="w-14 text-right text-xs tabular-nums lg:w-16">{gpuMem > 0 ? formatBytes(gpuMem) : "—"}</span>
+                      <Meter value={gpuUtil} thin className="w-14" />
+                      <span className="w-10 text-right text-xs tabular-nums">{gpuUtil > 0 || gpuMem > 0 ? `${gpuUtil.toFixed(0)}%` : "—"}</span>
+                      <span className="text-muted-foreground w-14 text-right text-xs tabular-nums">{gpuMem > 0 ? formatBytes(gpuMem) : ""}</span>
                     </div>
                   )}
                 </button>
@@ -173,23 +186,34 @@ export default function StackMonitorPage() {
                       )}
                       <Button size="sm" variant="ghost" asChild><Link to={`/containers/${c.id}`} state={{ from: "stack", stack: name }}><ExternalLink /> Full page</Link></Button>
                     </div>
-                    <div className={`grid gap-3 ${gpuAvail ? "sm:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
+                    <div className={`grid gap-3 ${gpuAvail ? "sm:grid-cols-2 xl:grid-cols-5" : "md:grid-cols-3"}`}>
                       <StatTile icon={<Cpu className="size-3.5" />} label="CPU" value={cc ? `${cc.cpu_percent.toFixed(1)}%` : "—"} sub={cc ? `pids ${cc.pids}` : undefined}
                         meter={cc ? { value: cc.cpu_percent } : undefined} spark={m?.history.map((h) => h.cpu_percent)} sparkFormat={(v) => `${v.toFixed(1)}%`} />
                       <StatTile icon={<MemoryStick className="size-3.5" />} label="Memory" value={cc ? formatBytes(cc.mem_usage) : "—"} sub={cc ? `${cc.mem_percent.toFixed(1)}% of ${formatBytes(cc.mem_limit)}` : undefined}
                         meter={cc ? { value: cc.mem_percent } : undefined} spark={m?.history.map((h) => h.mem_usage)} sparkFormat={formatBytes} />
                       {gpuAvail && (
-                        <StatTile
-                          icon={<CircuitBoard className="size-3.5" />}
-                          label={gpuUnified ? "GPU memory (unified)" : "GPU memory"}
-                          value={gpuMem > 0 ? formatBytes(gpuMem) : "—"}
-                          sub={gpuMem > 0
-                            ? `${(cc?.gpu_mem_percent ?? 0).toFixed(1)}% of ${formatBytes(gpuTotal)}${gpuUnified ? " host RAM" : ""}${(cc?.gpu_indexes?.length) ? ` · GPU ${(cc!.gpu_indexes!).join(",")}` : ""}`
-                            : "not using GPU"}
-                          meter={gpuMem > 0 ? { value: cc?.gpu_mem_percent ?? 0 } : undefined}
-                          spark={m?.history.map((h) => h.gpu_mem_used ?? 0)}
-                          sparkFormat={formatBytes}
-                        />
+                        <>
+                          <StatTile
+                            icon={<CircuitBoard className="size-3.5" />}
+                            label={gpuUnified ? "GPU memory (unified)" : "GPU memory"}
+                            value={gpuMem > 0 ? formatBytes(gpuMem) : "—"}
+                            sub={gpuMem > 0
+                              ? `${(cc?.gpu_mem_percent ?? 0).toFixed(1)}% of ${formatBytes(gpuTotal)}${gpuUnified ? " host RAM" : ""}${(cc?.gpu_indexes?.length) ? ` · GPU ${(cc!.gpu_indexes!).join(",")}` : ""}`
+                              : "not using GPU"}
+                            meter={gpuMem > 0 ? { value: cc?.gpu_mem_percent ?? 0 } : undefined}
+                            spark={m?.history.map((h) => h.gpu_mem_used ?? 0)}
+                            sparkFormat={formatBytes}
+                          />
+                          <StatTile
+                            icon={<CircuitBoard className="size-3.5" />}
+                            label="GPU utilization"
+                            value={`${gpuUtil.toFixed(0)}%`}
+                            sub={(cc?.gpu_indexes?.length) ? `compute (SM) · GPU ${cc.gpu_indexes.join(",")}` : "process SM util (pmon)"}
+                            meter={{ value: Math.min(100, gpuUtil) }}
+                            spark={m?.history.map((h) => h.gpu_util_percent ?? 0)}
+                            sparkFormat={(v) => `${v.toFixed(0)}%`}
+                          />
+                        </>
                       )}
                       <StatTile icon={<Network className="size-3.5" />} label="Network" value={cc ? <span className="text-base">↓{rate(cc.net_rx_rate)} ↑{rate(cc.net_tx_rate)}</span> : "—"}
                         spark={m?.history.map((h) => h.net_rx_rate + h.net_tx_rate)} sparkFormat={rate} />
