@@ -14,11 +14,14 @@ export function LogsPanel({ containerId, active = true, className }: { container
   const [follow, setFollow] = useState(true)
   const pre = useRef<HTMLPreElement>(null)
   const pausedRef = useRef(false)
+  const followRef = useRef(true)
   pausedRef.current = paused
+  followRef.current = follow
 
   useEffect(() => {
     if (!active || !containerId) return
     setLines([])
+    setFollow(true)
     const ws = new WebSocket(api.logsWsUrl(containerId, 300))
     ws.onmessage = (e) => {
       if (pausedRef.current) return
@@ -30,13 +33,26 @@ export function LogsPanel({ containerId, active = true, className }: { container
   }, [active, containerId])
 
   useEffect(() => {
-    if (follow && pre.current) pre.current.scrollTop = pre.current.scrollHeight
+    if (!follow || !pre.current) return
+    pre.current.scrollTop = pre.current.scrollHeight
   }, [lines, follow])
+
+  function onScroll() {
+    const el = pre.current
+    if (!el) return
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    // User scrolled up → stop auto-follow so they can read
+    if (distanceFromBottom > 48) {
+      if (followRef.current) setFollow(false)
+    } else if (!followRef.current) {
+      setFollow(true)
+    }
+  }
 
   const shown = filter ? lines.filter((l) => l.toLowerCase().includes(filter.toLowerCase())) : lines
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col gap-2 overflow-hidden", className)}>
+    <div className={cn("flex h-full min-h-0 flex-col gap-2", className)}>
       <div className="flex shrink-0 flex-wrap gap-2">
         <Input placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-xs" />
         <Button variant="outline" size="sm" onClick={() => setPaused((p) => !p)}>{paused ? <Play /> : <Pause />} {paused ? "Resume" : "Pause"}</Button>
@@ -44,9 +60,11 @@ export function LogsPanel({ containerId, active = true, className }: { container
         <Button variant="outline" size="sm" onClick={() => setLines([])}><Trash2 /> Clear</Button>
         <span className="text-muted-foreground self-center text-xs">{lines.length} lines</span>
       </div>
+      {/* h-0 + flex-1 is required so the pane gets a bounded height and can scroll */}
       <pre
         ref={pre}
-        className="bg-zinc-950 text-zinc-100 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-md p-3 font-mono text-xs leading-5 break-all whitespace-pre-wrap"
+        onScroll={onScroll}
+        className="bg-zinc-950 text-zinc-100 h-0 min-h-0 flex-1 overflow-y-scroll rounded-md p-3 font-mono text-xs leading-5 break-all whitespace-pre-wrap"
       >
         {shown.join("\n") || "waiting for output…"}
       </pre>
@@ -62,8 +80,8 @@ export function LogsDialog({ containerId, name, open, onOpenChange }: { containe
           <DialogTitle className="font-mono text-base">{name}</DialogTitle>
           <DialogDescription>Live logs</DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <LogsPanel containerId={containerId} active={open} className="h-full" />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <LogsPanel containerId={containerId} active={open} className="min-h-0 flex-1" />
         </div>
       </DialogContent>
     </Dialog>

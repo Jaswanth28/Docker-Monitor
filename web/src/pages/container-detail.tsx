@@ -150,8 +150,10 @@ export default function ContainerDetailPage() {
           <TabsTrigger value="config">Config & labels</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="logs" className="mt-0 h-[min(28rem,55vh)] overflow-hidden outline-none">
-          <LogsPanel containerId={s.id} className="h-full" />
+        <TabsContent value="logs" className="mt-0 outline-none data-[state=inactive]:hidden">
+          <div className="flex h-80 flex-col overflow-hidden rounded-md border sm:h-96">
+            <LogsPanel containerId={s.id} className="min-h-0 flex-1 p-2" />
+          </div>
         </TabsContent>
 
         <TabsContent value="mounts">
