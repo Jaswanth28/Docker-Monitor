@@ -37,11 +37,15 @@ A self-hosted dashboard for monitoring and managing Docker containers, built for
    ```
 3. Bring up the stack:
    ```bash
-   docker compose up -d
+   docker compose up -d --build
    ```
-4. The dashboard should now be available at `http://localhost:<port>`.
+   **Apple Silicon (M1/M2/M3/M4):**
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+   ```
+   Set `STACKS_DIR` in `.env` to a path under your home directory and share it in Docker Desktop → Settings → Resources → File sharing. Metal GPU metrics are not available inside Linux containers on Mac. On Linux, the dashboard covers NVIDIA, AMD (amdgpu), Intel iGPU/Arc, and hybrid Intel+NVIDIA / Intel+AMD hosts.
 
-> Adjust the above once your actual compose file, ports, and env variables are finalized — this is a placeholder flow for early contributors.
+4. The dashboard should now be available at `http://localhost:<port>`.
 
 ## Project Structure
 

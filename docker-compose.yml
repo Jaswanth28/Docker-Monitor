@@ -40,9 +40,14 @@ services:
     security_opt:
       - apparmor:unconfined
     device_cgroup_rules:
+      # NVIDIA (NVRM / nvidia-uvm / nvidia-caps)
       - "c 195:* rmw"
       - "c 234:* rmw"
       - "c 236:* rmw"
+      # DRM render nodes (AMD / Intel iGPU / Arc) — /dev/dri/*
+      - "c 226:* rmw"
+      # AMD KFD (ROCm compute)
+      - "c 511:* rmw"
     depends_on:
       - infisical
     labels:

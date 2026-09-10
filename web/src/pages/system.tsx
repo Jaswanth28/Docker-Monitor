@@ -65,13 +65,19 @@ export default function SystemPage() {
   const dockerTotal = df ? df.images.size + df.containers.size + df.volumes.size + df.build_cache.size : 0
   const gpu = o?.gpu
   const gpuOk = !!gpu?.available
+  const plat = o?.platform ?? d?.platform
+  const apple = !!plat?.apple_silicon
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold sm:text-2xl">System</h1>
-          <p className="text-muted-foreground text-sm break-words">{d ? `Docker ${d.server_version} · ${d.os} · ${d.kernel} · ${d.arch}` : "…"}{o?.collector.error && <span className="text-destructive"> · collector: {o.collector.error}</span>}</p>
+          <p className="text-muted-foreground text-sm break-words">
+            {d ? `Docker ${d.server_version} · ${d.os} · ${d.kernel} · ${d.arch}` : "…"}
+            {plat?.label && <span> · {plat.label}</span>}
+            {o?.collector.error && <span className="text-destructive"> · collector: {o.collector.error}</span>}
+          </p>
         </div>
         <Button variant="outline" size="sm" className="w-fit shrink-0" onClick={onRefresh} disabled={manualRefresh}>
           <RefreshCw className={manualRefresh ? "animate-spin" : undefined} />
@@ -92,17 +98,42 @@ export default function SystemPage() {
           meter={o?.disk ? { value: o.disk.percent } : undefined} />
         <StatTile
           icon={<CircuitBoard className="size-3.5" />}
-          label={gpuOk ? (gpu?.unified_memory || host?.gpu_unified_memory ? "GPU memory (unified)" : `GPU memory${(host?.gpu_count ?? 0) > 1 ? ` ×${host?.gpu_count}` : ""}`) : "GPU"}
+          label={gpuOk ? (gpu?.unified_memory || host?.gpu_unified_memory ? "GPU memory (unified)" : `GPU memory${(host?.gpu_count ?? 0) > 1 ? ` ×${host?.gpu_count}` : ""}`) : apple ? "GPU (Apple Silicon)" : "GPU"}
           value={gpuOk && host ? formatBytes(host.gpu_mem_used ?? 0) : "—"}
           sub={gpuOk && host
             ? `${(host.gpu_mem_percent ?? 0).toFixed(0)}% of ${formatBytes(host.gpu_mem_total ?? 0)}${gpu?.unified_memory || host.gpu_unified_memory ? " host RAM" : ""} · containers ${formatBytes(o!.totals.gpu_mem_used ?? 0)}`
-            : (gpu?.error ?? "No NVIDIA GPU detected")}
+            : (plat?.gpu_note ?? gpu?.error ?? "No GPU detected (NVIDIA / AMD / Intel)")}
           meter={gpuOk && host ? { value: host.gpu_mem_percent ?? 0 } : undefined}
           spark={gpuOk ? o?.host_history.filter((h) => h.gpu_available).map((h) => h.gpu_mem_used ?? 0) : undefined}
           sparkMax={host?.gpu_mem_total}
           sparkFormat={formatBytes}
         />
       </div>
+
+      {apple && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4" /> Apple Silicon</CardTitle>
+            <CardDescription>Docker Desktop on Mac runs Linux containers in a VM — Metal is not passed through.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-muted-foreground text-sm">
+            This dashboard still monitors containers, compose stacks, CPU, memory, and disk for the Docker VM.
+            Metal is not exposed here. On Linux hosts, NVIDIA, AMD, Intel iGPU/Arc, and hybrid setups are supported.
+          </CardContent>
+        </Card>
+      )}
+
+      {gpuOk && (gpu?.vendors?.length ?? 0) > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground text-xs uppercase tracking-wide">GPUs</span>
+          {(gpu?.vendors ?? []).map((v) => (
+            <Badge key={v} variant="secondary" className="uppercase">{v}</Badge>
+          ))}
+          {(gpu?.gpus?.length ?? 0) > 1 && (
+            <span className="text-muted-foreground text-xs">{gpu!.gpus.length} devices</span>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[
@@ -119,16 +150,24 @@ export default function SystemPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Cpu className="size-4" /> GPU compute</CardTitle>
-              <CardDescription>SM / core utilization</CardDescription>
+              <CardDescription>
+                Utilization per device
+                {(gpu?.vendors?.length ?? 0) > 1 ? " (hybrid hosts list every GPU)" : ""}
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {(gpu?.gpus ?? []).map((g) => (
                 <div key={g.uuid} className="flex flex-col gap-1.5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-sm font-medium">GPU {g.index} · {g.name}</span>
+                    <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                      GPU {g.index} · {g.name}
+                      {g.vendor && <Badge variant="outline" className="text-[10px] uppercase font-normal">{g.vendor}</Badge>}
+                      {g.unified_memory && <Badge variant="secondary" className="text-[10px] font-normal">UMA</Badge>}
+                    </span>
                     <span className="text-muted-foreground text-xs tabular-nums">
-                      {g.temperature_c != null && <>{g.temperature_c}°C</>}
-                      {g.power_w != null && <>{g.temperature_c != null ? " · " : ""}{g.power_w.toFixed(0)} W</>}
+                      {g.mem_total > 0 && <>{formatBytes(g.mem_used)} / {formatBytes(g.mem_total)}</>}
+                      {g.temperature_c != null && <>{(g.mem_total > 0 ? " · " : "")}{g.temperature_c}°C</>}
+                      {g.power_w != null && <>{(g.mem_total > 0 || g.temperature_c != null) ? " · " : ""}{g.power_w.toFixed(0)} W</>}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -145,7 +184,9 @@ export default function SystemPage() {
               <CardDescription>
                 {gpu?.unified_memory
                   ? "Process-attributed use of the shared host RAM pool (UMA)"
-                  : "VRAM attributed via process → cgroup mapping"}
+                  : gpu?.vendors?.includes("nvidia")
+                    ? "VRAM via process → cgroup (NVIDIA). AMD/Intel shown at device level."
+                    : "Device-level memory; per-container attribution needs NVIDIA compute apps"}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -289,12 +330,13 @@ export default function SystemPage() {
           )}
           {isAdmin && (
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={dockerCtl.isPending} onClick={() => dockerCtl.mutate("daemon-reload")}>
+              <Button size="sm" variant="outline" disabled={dockerCtl.isPending || apple} onClick={() => dockerCtl.mutate("daemon-reload")} title={apple ? "Not available on Docker Desktop for Mac" : undefined}>
                 <RotateCcw className={dockerCtl.isPending && dockerCtl.variables === "daemon-reload" ? "animate-spin" : ""} /> Daemon reload
               </Button>
-              <Button size="sm" variant="destructive" disabled={dockerCtl.isPending} onClick={() => setConfirmRestart(true)}>
+              <Button size="sm" variant="destructive" disabled={dockerCtl.isPending || apple} onClick={() => setConfirmRestart(true)} title={apple ? "Not available on Docker Desktop for Mac" : undefined}>
                 <Power /> Restart Docker
               </Button>
+              {apple && <span className="text-muted-foreground self-center text-xs">Host systemctl actions are unavailable under Docker Desktop on Mac.</span>}
             </div>
           )}
         </CardContent>

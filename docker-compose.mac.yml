@@ -1,0 +1,17 @@
+# Optional overrides for Apple Silicon / Docker Desktop on Mac.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mac.yml up -d --build
+#
+# Notes:
+# - Builds linux/arm64 natively on M1/M2/M3/M4.
+# - Metal GPU is NOT available inside Linux containers — GPU tiles stay empty by design.
+# - /hostfs is the Docker Desktop Linux VM root, not macOS /.
+# - Set STACKS_DIR to a path that exists on your Mac and is shared with Docker Desktop
+#   (Docker Desktop → Settings → Resources → File sharing), e.g. /Users/you/stacks
+
+services:
+  app:
+    environment:
+      # Clear NVIDIA hints — irrelevant on Mac Docker Desktop
+      NVIDIA_VISIBLE_DEVICES: ""
+      NVIDIA_DRIVER_CAPABILITIES: ""

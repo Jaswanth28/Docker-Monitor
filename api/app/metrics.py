@@ -17,6 +17,7 @@ from typing import Any
 
 from .docker_service import _calc_cpu, client
 from .gpu import sample_gpus
+from .platform_info import detect_platform
 
 log = logging.getLogger("dm.metrics")
 
@@ -355,6 +356,10 @@ class Collector:
                 "util_percent": agg.get("util_percent") or 0.0,
             })
         gpu_users.sort(key=lambda e: e["mem_used"], reverse=True)
+        try:
+            plat = detect_platform()
+        except Exception:  # noqa: BLE001
+            plat = {"kind": "unknown", "label": "Unknown", "arch": "unknown"}
         return {
             "host": host[-1] if host else None,
             "host_history": host,
@@ -362,6 +367,7 @@ class Collector:
             "disk_is_host": os.path.isdir(HOST_FS),
             "docker_df": df,
             "gpu": {**gpu, "processes": procs, "containers": gpu_users},
+            "platform": plat,
             "top_cpu": by_cpu,
             "top_mem": by_mem,
             "top_gpu": by_gpu,
