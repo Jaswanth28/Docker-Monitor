@@ -95,7 +95,7 @@ export default function SystemPage() {
           label={gpuOk ? (gpu?.unified_memory || host?.gpu_unified_memory ? "GPU memory (unified)" : `GPU memory${(host?.gpu_count ?? 0) > 1 ? ` ×${host?.gpu_count}` : ""}`) : "GPU"}
           value={gpuOk && host ? formatBytes(host.gpu_mem_used ?? 0) : "—"}
           sub={gpuOk && host
-            ? `${(host.gpu_mem_percent ?? 0).toFixed(0)}% of ${formatBytes(host.gpu_mem_total ?? 0)}${gpu?.unified_memory || host.gpu_unified_memory ? " host RAM" : ""} · util ${(host.gpu_util_percent ?? 0).toFixed(0)}% · containers ${formatBytes(o!.totals.gpu_mem_used ?? 0)}`
+            ? `${(host.gpu_mem_percent ?? 0).toFixed(0)}% of ${formatBytes(host.gpu_mem_total ?? 0)}${gpu?.unified_memory || host.gpu_unified_memory ? " host RAM" : ""} · containers ${formatBytes(o!.totals.gpu_mem_used ?? 0)}`
             : (gpu?.error ?? "No NVIDIA GPU detected")}
           meter={gpuOk && host ? { value: host.gpu_mem_percent ?? 0 } : undefined}
           spark={gpuOk ? o?.host_history.filter((h) => h.gpu_available).map((h) => h.gpu_mem_used ?? 0) : undefined}
@@ -113,17 +113,13 @@ export default function SystemPage() {
         ))}
       </div>
 
-      {/* GPU detail */}
+      {/* GPU detail: left = compute util, right = memory by container */}
       {gpuOk && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4" /> GPUs</CardTitle>
-              <CardDescription>
-                {gpu?.unified_memory
-                  ? "GB10 / unified memory — VRAM fields are N/A; showing process-attributed use vs host RAM"
-                  : "Live nvidia-smi sample · util and VRAM per device"}
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2"><Cpu className="size-4" /> GPU compute</CardTitle>
+              <CardDescription>SM / core utilization from nvidia-smi (how busy the GPU is)</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {(gpu?.gpus ?? []).map((g) => (
@@ -131,14 +127,13 @@ export default function SystemPage() {
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <span className="text-sm font-medium">GPU {g.index} · {g.name}</span>
                     <span className="text-muted-foreground text-xs tabular-nums">
-                      {g.util_percent.toFixed(0)}% util
-                      {g.temperature_c != null && <> · {g.temperature_c}°C</>}
-                      {g.power_w != null && <> · {g.power_w.toFixed(0)} W</>}
+                      {g.temperature_c != null && <>{g.temperature_c}°C</>}
+                      {g.power_w != null && <>{g.temperature_c != null ? " · " : ""}{g.power_w.toFixed(0)} W</>}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Meter value={g.mem_percent} thin className="flex-1" />
-                    <span className="text-xs tabular-nums whitespace-nowrap">{formatBytes(g.mem_used)} / {formatBytes(g.mem_total)}</span>
+                    <Meter value={g.util_percent} thin className="flex-1" />
+                    <span className="w-12 shrink-0 text-right text-xs tabular-nums">{g.util_percent.toFixed(0)}%</span>
                   </div>
                 </div>
               ))}
@@ -146,8 +141,12 @@ export default function SystemPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Container className="size-4" /> GPU by container</CardTitle>
-              <CardDescription>VRAM attributed via process → cgroup mapping</CardDescription>
+              <CardTitle className="flex items-center gap-2"><Container className="size-4" /> GPU memory by container</CardTitle>
+              <CardDescription>
+                {gpu?.unified_memory
+                  ? "Process-attributed use of the shared host RAM pool (UMA)"
+                  : "VRAM attributed via process → cgroup mapping"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <RankedBars
