@@ -100,9 +100,9 @@ export default function StacksPage() {
       )}
 
       <Dialog open={!!output} onOpenChange={(o) => !o && setOutput(null)}>
-        <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-3xl">
-          <DialogHeader><DialogTitle className="font-mono text-sm">{output?.title}</DialogTitle></DialogHeader>
-          <pre className="bg-zinc-950 text-zinc-100 min-h-0 flex-1 overflow-auto rounded-md p-3 font-mono text-xs whitespace-pre-wrap">{output?.text || "(no output)"}</pre>
+        <DialogContent className="flex h-[min(80vh,40rem)] max-h-[80vh] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogHeader className="shrink-0"><DialogTitle className="font-mono text-sm">{output?.title}</DialogTitle></DialogHeader>
+          <pre className="bg-zinc-950 text-zinc-100 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-md p-3 font-mono text-xs whitespace-pre-wrap">{output?.text || "(no output)"}</pre>
         </DialogContent>
       </Dialog>
 

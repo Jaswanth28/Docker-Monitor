@@ -73,7 +73,7 @@ export default function StackEditorPage() {
   const canSave = isAdmin && nameOk && compose.trim().length > 0 && !save.isPending
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col gap-4">
+    <div className="flex h-[calc(100dvh-3.5rem)] flex-col gap-4 md:h-[calc(100dvh-3rem)]">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon-sm" asChild><Link to={isNew ? "/stacks" : `/stacks/${routeName}`}><ArrowLeft /></Link></Button>

@@ -156,9 +156,9 @@ export default function ContainersPage() {
       <LogsDialog containerId={logsFor?.id ?? null} name={logsFor?.name} open={!!logsFor} onOpenChange={(o) => !o && setLogsFor(null)} />
 
       <Dialog open={!!inspectFor} onOpenChange={(o) => !o && setInspectFor(null)}>
-        <DialogContent className="flex h-[85vh] flex-col sm:max-w-4xl">
-          <DialogHeader><DialogTitle className="font-mono">{inspectFor?.name}</DialogTitle></DialogHeader>
-          <pre className="bg-muted min-h-0 flex-1 overflow-auto rounded-md p-3 font-mono text-xs">{inspect.data ? JSON.stringify(inspect.data, null, 2) : "Loading…"}</pre>
+        <DialogContent className="flex h-[min(85vh,52rem)] max-h-[85vh] flex-col overflow-hidden sm:max-w-4xl">
+          <DialogHeader className="shrink-0"><DialogTitle className="font-mono">{inspectFor?.name}</DialogTitle></DialogHeader>
+          <pre className="bg-muted min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-md p-3 font-mono text-xs">{inspect.data ? JSON.stringify(inspect.data, null, 2) : "Loading…"}</pre>
         </DialogContent>
       </Dialog>
 

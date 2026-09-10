@@ -19,11 +19,11 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth()
   const { theme, toggle } = useTheme()
   return (
-    <>
-      <div className="flex h-14 items-center gap-2.5 border-b px-4 font-semibold">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-4 font-semibold">
         <Logo size={26} /> Docker Monitor
       </div>
-      <nav className="flex flex-1 flex-col gap-1 p-2">
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain p-2">
         {nav.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -37,7 +37,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </NavLink>
         ))}
       </nav>
-      <div className="border-t p-3">
+      <div className="bg-sidebar shrink-0 border-t p-3">
         <div className="mb-2 flex items-center justify-between gap-2 text-sm">
           <span className="truncate font-medium">{user?.username}</span>
           <Badge variant={user?.role === "admin" ? "default" : "muted"} className="shrink-0">
@@ -53,7 +53,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </Button>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -71,9 +71,9 @@ export function Layout() {
   }, [open])
 
   return (
-    <div className="flex min-h-screen">
-      {/* Desktop sidebar */}
-      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border hidden w-56 shrink-0 flex-col border-r md:flex">
+    <div className="flex h-dvh max-h-dvh overflow-hidden">
+      {/* Desktop sidebar — fixed to viewport so Logout stays visible */}
+      <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border hidden h-full w-56 shrink-0 flex-col border-r md:flex">
         <Sidebar />
       </aside>
 
@@ -81,8 +81,8 @@ export function Layout() {
       {open && (
         <div className="fixed inset-0 z-40 md:hidden">
           <button type="button" aria-label="Close menu" className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border absolute inset-y-0 left-0 flex w-[min(16rem,85vw)] flex-col border-r shadow-lg">
-            <div className="absolute top-3 right-3">
+          <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border absolute inset-y-0 left-0 flex h-full w-[min(16rem,85vw)] flex-col border-r shadow-lg">
+            <div className="absolute top-3 right-3 z-10">
               <Button variant="ghost" size="icon-sm" onClick={() => setOpen(false)} aria-label="Close"><X /></Button>
             </div>
             <Sidebar onNavigate={() => setOpen(false)} />
@@ -90,12 +90,12 @@ export function Layout() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-30 flex h-12 items-center gap-2 border-b px-3 backdrop-blur md:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 z-30 flex h-12 shrink-0 items-center gap-2 border-b px-3 backdrop-blur md:hidden">
           <Button variant="ghost" size="icon-sm" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></Button>
           <div className="flex items-center gap-2 text-sm font-semibold"><Logo size={20} /> Docker Monitor</div>
         </header>
-        <main className="min-w-0 flex-1 p-3 sm:p-4 md:p-6">
+        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 md:p-6">
           <Outlet />
         </main>
       </div>
