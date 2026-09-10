@@ -15,6 +15,12 @@ class Settings:
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = int(os.environ.get("JWT_TTL_MINUTES", "720"))
 
+    # Optional Kubernetes monitoring (read-only). Off by default.
+    kubernetes_enabled: bool = os.environ.get("KUBERNETES_ENABLED", "").lower() in {"1", "true", "yes"}
+    kubernetes_in_cluster: bool = os.environ.get("KUBERNETES_IN_CLUSTER", "").lower() in {"1", "true", "yes"}
+    kubeconfig: str = os.environ.get("KUBECONFIG", "").strip()
+    kubernetes_context: str = os.environ.get("KUBERNETES_CONTEXT", "").strip()
+
     @property
     def infisical_enabled(self) -> bool:
         return bool(self.infisical_url and self.infisical_client_id and self.infisical_client_secret and self.infisical_project_id)

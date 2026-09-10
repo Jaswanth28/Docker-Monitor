@@ -7,3 +7,4 @@ python-jose[cryptography]==3.3.0
 bcrypt==4.2.1
 pyyaml==6.0.2
 pydantic==2.10.4
+kubernetes==32.0.1

@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import docker_service as dk
+from . import kube_service as kube
 from . import stacks_service as st
 from .auth import User, authenticate, current_user, require_admin, ws_user
 from .host_ctl import docker_control
@@ -303,6 +304,33 @@ async def system_df_refresh():
 async def system_docker_control(action: str):
     """Run systemctl daemon-reload or restart docker on the host (via nsenter)."""
     return await run_in_threadpool(docker_control, action)
+
+
+# ───────────────────────────── kubernetes (optional) ─────────────────────────────
+@app.get("/api/k8s/status", dependencies=[Depends(current_user)])
+async def k8s_status():
+    """Always 200 — {enabled:false} when KUBERNETES_ENABLED is off."""
+    return await run_in_threadpool(kube.status)
+
+
+@app.get("/api/k8s/overview", dependencies=[Depends(current_user)])
+async def k8s_overview():
+    return await run_in_threadpool(kube.overview)
+
+
+@app.get("/api/k8s/namespaces", dependencies=[Depends(current_user)])
+async def k8s_namespaces():
+    return await run_in_threadpool(kube.list_namespaces)
+
+
+@app.get("/api/k8s/nodes", dependencies=[Depends(current_user)])
+async def k8s_nodes():
+    return await run_in_threadpool(kube.list_nodes)
+
+
+@app.get("/api/k8s/pods", dependencies=[Depends(current_user)])
+async def k8s_pods(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_pods, namespace)
 
 
 # ───────────────────────────── static frontend ─────────────────────────────

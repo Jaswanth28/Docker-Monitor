@@ -1,0 +1,13 @@
+# Optional overlay: enable Kubernetes monitoring with host kubeconfig.
+#   docker compose -f docker-compose.yml -f docker-compose.k8s.yml up -d --build
+#
+# For in-cluster (this app running as a pod with a ServiceAccount):
+#   set KUBERNETES_IN_CLUSTER=true and omit the kubeconfig volume.
+
+services:
+  app:
+    environment:
+      KUBERNETES_ENABLED: "true"
+      KUBECONFIG: /root/.kube/config
+    volumes:
+      - ${KUBECONFIG_HOST:-${HOME}/.kube}:/root/.kube:ro
