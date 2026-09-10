@@ -96,8 +96,8 @@ export default function ContainerDetailPage() {
         <StatTile icon={<CircuitBoard className="size-3.5" />} label="GPU memory"
           value={(cur?.gpu_mem_used ?? 0) > 0 ? formatBytes(cur!.gpu_mem_used!) : "—"}
           sub={(cur?.gpu_mem_used ?? 0) > 0
-            ? `${(cur?.gpu_mem_percent ?? 0).toFixed(1)}% of host VRAM · GPU ${(cur?.gpu_indexes ?? []).join(", ") || "?"}`
-            : "not using GPU"}
+            ? `${(cur?.gpu_mem_percent ?? 0).toFixed(1)}% of pool · GPU ${(cur?.gpu_indexes ?? []).join(", ") || "?"}`
+            : "not using GPU (compute util is device-wide, shown on System)"}
           meter={(cur?.gpu_mem_used ?? 0) > 0 ? { value: cur!.gpu_mem_percent ?? 0, max: 100 } : undefined}
           spark={hist.map((h) => h.gpu_mem_used ?? 0)} sparkFormat={formatBytes} />
         <StatTile icon={<HardDrive className="size-3.5" />} label="Storage" value={formatBytes(d.storage.size_rw)} sub={<>writable layer · rootfs {formatBytes(d.storage.size_rootfs)}{cur ? <> · disk r {formatBytes(cur.blk_read)} / w {formatBytes(cur.blk_write)}</> : null}</>} />
