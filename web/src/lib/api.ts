@@ -81,6 +81,9 @@ export interface StackMetrics {
   history: Sample[]
   per_container: Record<string, ContainerMetrics>
   containers_sampled: number
+  gpu_available?: boolean
+  gpu_unified_memory?: boolean
+  gpu_mem_total?: number
 }
 export interface Overview {
   host: HostSample | null

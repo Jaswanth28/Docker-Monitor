@@ -256,6 +256,12 @@ class Collector:
             n = min(len(h) for h in histories)
             for i in range(-n, 0):
                 samples = [h[i] for h in histories]
+                gpu_mem = sum(s.get("gpu_mem_used") or 0 for s in samples)
+                gpu_indexes = set()
+                for s in samples:
+                    for idx in s.get("gpu_indexes") or []:
+                        gpu_indexes.add(idx)
+                pool = ((self.gpu_snapshot or {}).get("totals") or {}).get("mem_total") or 0
                 history.append({
                     "t": samples[0]["t"],
                     "cpu_percent": round(sum(s["cpu_percent"] for s in samples), 2),
@@ -264,12 +270,20 @@ class Collector:
                     "net_tx_rate": sum(s["net_tx_rate"] for s in samples),
                     "blk_read": sum(s["blk_read"] for s in samples),
                     "blk_write": sum(s["blk_write"] for s in samples),
+                    "gpu_mem_used": gpu_mem,
+                    "gpu_indexes": sorted(gpu_indexes),
+                    "gpu_mem_percent": round(gpu_mem / pool * 100, 2) if pool else 0.0,
                 })
+        gpu = self.gpu_snapshot or {}
+        totals = gpu.get("totals") or {}
         return {
             "current": history[-1] if history else None,
             "history": history,
             "per_container": per_container,
             "containers_sampled": len(histories),
+            "gpu_available": bool(gpu.get("available")),
+            "gpu_unified_memory": bool(gpu.get("unified_memory")),
+            "gpu_mem_total": totals.get("mem_total") or 0,
         }
 
     def overview(self, top: int = 8) -> dict:
