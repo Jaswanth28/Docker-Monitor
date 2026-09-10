@@ -28,17 +28,38 @@ def _run(argv: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[s
         return None
 
 
+_last_nvidia_error: str | None = None
+
+
 def _nvidia_smi(*args: str) -> str | None:
-    """Run nvidia-smi on the host if possible (nsenter), else in-container."""
+    """Run nvidia-smi on the host if possible (nsenter), else in-container.
+
+    Needs host NVIDIA devices visible to this container (compose deploy.devices /
+    device_cgroup_rules / NVIDIA Container Toolkit). Otherwise NVML returns
+    "Unknown Error" even when the host binary is found via nsenter.
+    """
+    global _last_nvidia_error
     base = ["nvidia-smi", *args]
+    attempts: list[list[str]] = []
     nsenter = shutil.which("nsenter")
     if nsenter:
-        r = _run([nsenter, "-t", "1", "-m", "-u", "-i", "-n", "--", *base])
-        if r and r.returncode == 0 and r.stdout.strip():
+        # Host mount + net so we use host driver libs and /dev; keep our pid NS.
+        attempts.append([nsenter, "-t", "1", "-m", "-u", "-i", "-n", "--", *base])
+    attempts.append(base)
+
+    last_err = None
+    for argv in attempts:
+        r = _run(argv)
+        if not r:
+            continue
+        if r.returncode == 0 and r.stdout.strip():
+            _last_nvidia_error = None
             return r.stdout
-    r = _run(base)
-    if r and r.returncode == 0 and r.stdout.strip():
-        return r.stdout
+        err = (r.stderr or r.stdout or "").strip()
+        if err:
+            last_err = err.splitlines()[-1][:240]
+            log.debug("nvidia-smi failed (%s): %s", argv[0], last_err)
+    _last_nvidia_error = last_err
     return None
 
 
@@ -87,13 +108,19 @@ def sample_gpus(container_ids: list[str] | None = None) -> dict[str, Any]:
         "--format=csv,noheader,nounits",
     )
     if not gpu_out:
+        hint = _last_nvidia_error or "nvidia-smi not available (no GPU or missing host access)"
+        if _last_nvidia_error and "NVML" in _last_nvidia_error:
+            hint = (
+                f"{_last_nvidia_error} — grant GPU devices to the app container "
+                "(NVIDIA Container Toolkit / deploy.devices / device_cgroup_rules) and recreate"
+            )
         return {
             "available": False,
             "gpus": [],
             "processes": [],
             "by_container": {},
             "totals": {"mem_used": 0, "mem_total": 0, "util_percent": 0.0, "mem_percent": 0.0, "count": 0},
-            "error": "nvidia-smi not available (no GPU or missing host access)",
+            "error": hint,
         }
 
     gpus: list[dict[str, Any]] = []
