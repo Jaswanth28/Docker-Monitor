@@ -53,7 +53,7 @@ export default function StacksPage() {
           return (
             <Card key={s.name} className="gap-4 overflow-hidden">
               <CardHeader>
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start justify-between gap-2">
                   <div className="min-w-0">
                     <CardTitle className="flex min-w-0 items-center gap-2">
                       <Link to={`/stacks/${s.name}`} className="min-w-0 truncate hover:underline">{s.name}</Link>
