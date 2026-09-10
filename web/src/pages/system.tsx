@@ -76,6 +76,9 @@ export default function SystemPage() {
           <p className="text-muted-foreground text-sm break-words">
             {d ? `Docker ${d.server_version} · ${d.os} · ${d.kernel} · ${d.arch}` : "…"}
             {plat?.label && <span> · {plat.label}</span>}
+            {o?.kubernetes?.enabled && (
+              <span> · K8s {o.kubernetes.connected ? (o.kubernetes.version ?? "connected") : "disconnected"}</span>
+            )}
             {o?.collector.error && <span className="text-destructive"> · collector: {o.collector.error}</span>}
           </p>
         </div>

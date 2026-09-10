@@ -7,7 +7,17 @@ import { cn } from "@/lib/utils"
 import { ArrowDownToLine, Pause, Play, Trash2 } from "lucide-react"
 
 /** Live log stream over websocket. Reusable inline (detail page) or inside LogsDialog. */
-export function LogsPanel({ containerId, active = true, className }: { containerId: string | null; active?: boolean; className?: string }) {
+export function LogsPanel({
+  containerId,
+  wsUrl,
+  active = true,
+  className,
+}: {
+  containerId?: string | null
+  wsUrl?: string | null
+  active?: boolean
+  className?: string
+}) {
   const [lines, setLines] = useState<string[]>([])
   const [paused, setPaused] = useState(false)
   const [filter, setFilter] = useState("")
@@ -19,10 +29,12 @@ export function LogsPanel({ containerId, active = true, className }: { container
   followRef.current = follow
 
   useEffect(() => {
-    if (!active || !containerId) return
+    if (!active) return
+    const url = wsUrl || (containerId ? api.logsWsUrl(containerId, 300) : null)
+    if (!url) return
     setLines([])
     setFollow(true)
-    const ws = new WebSocket(api.logsWsUrl(containerId, 300))
+    const ws = new WebSocket(url)
     ws.onmessage = (e) => {
       if (pausedRef.current) return
       const chunk = (e.data as string).split("\n").filter(Boolean)
@@ -30,7 +42,7 @@ export function LogsPanel({ containerId, active = true, className }: { container
     }
     ws.onerror = () => setLines((p) => [...p, "[websocket error]"])
     return () => ws.close()
-  }, [active, containerId])
+  }, [active, containerId, wsUrl])
 
   useEffect(() => {
     if (!follow || !pre.current) return

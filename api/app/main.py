@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -307,6 +308,10 @@ async def system_docker_control(action: str):
 
 
 # ───────────────────────────── kubernetes (optional) ─────────────────────────────
+class K8sScaleBody(BaseModel):
+    replicas: int
+
+
 @app.get("/api/k8s/status", dependencies=[Depends(current_user)])
 async def k8s_status():
     """Always 200 — {enabled:false} when KUBERNETES_ENABLED is off."""
@@ -331,6 +336,137 @@ async def k8s_nodes():
 @app.get("/api/k8s/pods", dependencies=[Depends(current_user)])
 async def k8s_pods(namespace: str | None = None):
     return await run_in_threadpool(kube.list_pods, namespace)
+
+
+@app.get("/api/k8s/pods/{namespace}/{name}", dependencies=[Depends(current_user)])
+async def k8s_pod_detail(namespace: str, name: str):
+    return await run_in_threadpool(kube.get_pod, namespace, name)
+
+
+@app.get("/api/k8s/pods/{namespace}/{name}/events", dependencies=[Depends(current_user)])
+async def k8s_pod_events(namespace: str, name: str):
+    return await run_in_threadpool(kube.list_events, namespace, "Pod", name)
+
+
+@app.get("/api/k8s/pods/{namespace}/{name}/logs", dependencies=[Depends(current_user)])
+async def k8s_pod_logs(namespace: str, name: str, container: str | None = None, tail: int = 300, previous: bool = False):
+    text = await run_in_threadpool(kube.pod_logs, namespace, name, container, tail, previous)
+    return {"logs": text}
+
+
+@app.delete("/api/k8s/pods/{namespace}/{name}", dependencies=[Depends(require_admin)])
+async def k8s_pod_delete(namespace: str, name: str):
+    return await run_in_threadpool(kube.delete_pod, namespace, name)
+
+
+@app.get("/api/k8s/events", dependencies=[Depends(current_user)])
+async def k8s_events(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_events, namespace)
+
+
+@app.get("/api/k8s/deployments", dependencies=[Depends(current_user)])
+async def k8s_deployments(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_deployments, namespace)
+
+
+@app.post("/api/k8s/deployments/{namespace}/{name}/scale", dependencies=[Depends(require_admin)])
+async def k8s_deploy_scale(namespace: str, name: str, body: K8sScaleBody):
+    return await run_in_threadpool(kube.scale_deployment, namespace, name, body.replicas)
+
+
+@app.post("/api/k8s/deployments/{namespace}/{name}/restart", dependencies=[Depends(require_admin)])
+async def k8s_deploy_restart(namespace: str, name: str):
+    return await run_in_threadpool(kube.restart_deployment, namespace, name)
+
+
+@app.get("/api/k8s/statefulsets", dependencies=[Depends(current_user)])
+async def k8s_statefulsets(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_statefulsets, namespace)
+
+
+@app.get("/api/k8s/daemonsets", dependencies=[Depends(current_user)])
+async def k8s_daemonsets(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_daemonsets, namespace)
+
+
+@app.get("/api/k8s/jobs", dependencies=[Depends(current_user)])
+async def k8s_jobs(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_jobs, namespace)
+
+
+@app.get("/api/k8s/cronjobs", dependencies=[Depends(current_user)])
+async def k8s_cronjobs(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_cronjobs, namespace)
+
+
+@app.get("/api/k8s/services", dependencies=[Depends(current_user)])
+async def k8s_services(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_services, namespace)
+
+
+@app.get("/api/k8s/ingresses", dependencies=[Depends(current_user)])
+async def k8s_ingresses(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_ingresses, namespace)
+
+
+@app.get("/api/k8s/pvcs", dependencies=[Depends(current_user)])
+async def k8s_pvcs(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_pvcs, namespace)
+
+
+@app.get("/api/k8s/pvs", dependencies=[Depends(current_user)])
+async def k8s_pvs():
+    return await run_in_threadpool(kube.list_pvs)
+
+
+@app.get("/api/k8s/configmaps", dependencies=[Depends(current_user)])
+async def k8s_configmaps(namespace: str | None = None):
+    return await run_in_threadpool(kube.list_configmaps, namespace)
+
+
+@app.get("/api/k8s/secrets", dependencies=[Depends(current_user)])
+async def k8s_secrets(namespace: str | None = None):
+    """Names and key names only — values are never returned."""
+    return await run_in_threadpool(kube.list_secrets, namespace)
+
+
+@app.websocket("/api/k8s/pods/{namespace}/{name}/logs/ws")
+async def k8s_pod_logs_ws(ws: WebSocket, namespace: str, name: str, container: str | None = None, tail: int = 200):
+    user = await ws_user(ws, ws.query_params.get("token"))
+    if not user:
+        return
+    await ws.accept()
+    if not kube.enabled():
+        await ws.send_text("error: Kubernetes disabled")
+        await ws.close()
+        return
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    stop = threading.Event()
+
+    def pump():
+        try:
+            for chunk in kube.iter_pod_logs(namespace, name, container, tail):
+                if stop.is_set():
+                    break
+                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+        except Exception as exc:  # noqa: BLE001
+            loop.call_soon_threadsafe(queue.put_nowait, f"error: {exc}")
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    task = loop.run_in_executor(None, pump)
+    try:
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            await ws.send_text(chunk if chunk.endswith("\n") else chunk + "\n")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        stop.set()
+        task.cancel()
 
 
 # ───────────────────────────── static frontend ─────────────────────────────

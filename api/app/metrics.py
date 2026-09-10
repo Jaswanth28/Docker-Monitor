@@ -360,6 +360,12 @@ class Collector:
             plat = detect_platform()
         except Exception:  # noqa: BLE001
             plat = {"kind": "unknown", "label": "Unknown", "arch": "unknown"}
+        try:
+            from . import kube_service as kube
+
+            k8s = kube.status() if kube.enabled() else {"enabled": False, "connected": False}
+        except Exception:  # noqa: BLE001
+            k8s = {"enabled": False, "connected": False, "error": "status failed"}
         return {
             "host": host[-1] if host else None,
             "host_history": host,
@@ -368,6 +374,7 @@ class Collector:
             "docker_df": df,
             "gpu": {**gpu, "processes": procs, "containers": gpu_users},
             "platform": plat,
+            "kubernetes": k8s,
             "top_cpu": by_cpu,
             "top_mem": by_mem,
             "top_gpu": by_gpu,
