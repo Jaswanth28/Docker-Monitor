@@ -141,8 +141,8 @@ export default function ContainerDetailPage() {
       </Card>
 
       {/* tabs */}
-      <Tabs defaultValue="logs" className="min-h-[420px]">
-        <TabsList>
+      <Tabs defaultValue="logs" className="flex flex-col gap-3">
+        <TabsList className="w-fit shrink-0">
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="mounts">Mounts ({d.mounts.length})</TabsTrigger>
           <TabsTrigger value="network">Network ({d.networks.length})</TabsTrigger>
@@ -150,8 +150,8 @@ export default function ContainerDetailPage() {
           <TabsTrigger value="config">Config & labels</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="logs" className="flex h-[480px] flex-col">
-          <LogsPanel containerId={s.id} />
+        <TabsContent value="logs" className="mt-0 h-[min(28rem,55vh)] overflow-hidden outline-none">
+          <LogsPanel containerId={s.id} className="h-full" />
         </TabsContent>
 
         <TabsContent value="mounts">
