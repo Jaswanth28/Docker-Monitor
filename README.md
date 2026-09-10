@@ -46,10 +46,11 @@ A self-hosted dashboard for monitoring and managing Docker containers, built for
    ```
    Set `STACKS_DIR` in `.env` to a path under your home directory and share it in Docker Desktop → Settings → Resources → File sharing. Metal GPU metrics are not available inside Linux containers on Mac. On Linux, the dashboard covers NVIDIA, AMD (amdgpu), Intel iGPU/Arc, and hybrid Intel+NVIDIA / Intel+AMD hosts.
 
-   **Kubernetes (optional):** mount your kubeconfig and enable the overlay (read-only; needs metrics-server for live CPU/mem):
+   **Kubernetes (optional):** mount your host kubeconfig and enable the overlay (pods, workloads, network, storage, config, events, logs; metrics-server for CPU/mem):
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.k8s.yml up -d --build
    ```
+   Prefer a dedicated ServiceAccount instead of cluster-admin kubeconfig — see `deploy/k8s-readonly-rbac.yaml`. For RKE2, copy `/etc/rancher/rke2/rke2.yaml` to the compose user's `~/.kube/config` and set `server:` to a reachable node IP (not `127.0.0.1` from inside Docker).
 
 4. The dashboard should now be available at `http://localhost:<port>`.
 

@@ -114,6 +114,7 @@ export interface Overview {
   docker_df: { images: DfBucket; containers: DfBucket; volumes: DfBucket; build_cache: DfBucket; at: number } | { error: string }
   gpu?: GpuSnapshot
   platform?: PlatformInfo
+  kubernetes?: K8sStatus
   top_cpu: TopEntry[]
   top_mem: TopEntry[]
   top_gpu?: TopEntry[]
@@ -135,11 +136,12 @@ export interface K8sStatus {
   kubeconfig?: string | null
   context?: string | null
 }
-export interface K8sNamespace { name: string; status: string; labels: Record<string, string> }
+export interface K8sNamespace { name: string; status: string; labels: Record<string, string>; created?: string | null }
 export interface K8sNode {
   name: string; ready: boolean; roles: string[]
   cpu_capacity: number; mem_capacity: number
   cpu_allocatable: number; mem_allocatable: number
+  gpu_capacity?: number; gpu_allocatable?: number
   cpu_usage?: number | null; mem_usage?: number | null
   kubelet_version?: string | null; os_image?: string | null; architecture?: string | null
 }
@@ -147,8 +149,52 @@ export interface K8sPod {
   name: string; namespace: string; uid: string; phase: string
   node: string | null; ready: string; restarts: number; images: string[]
   cpu_cores?: number | null; mem_bytes?: number | null
-  qos?: string | null; created?: string | null
+  gpu?: number; qos?: string | null; created?: string | null
+  owners?: { kind: string; name: string; controller?: boolean }[]
 }
+export interface K8sPodDetail extends K8sPod {
+  labels: Record<string, string>
+  annotations: Record<string, string>
+  containers: {
+    name: string; image: string; state: string; state_detail?: string | null
+    ready: boolean; restarts: number
+    cpu_request: number; cpu_limit: number; mem_request: number; mem_limit: number; gpu: number
+  }[]
+  volumes: { name: string; kind: string; detail?: string | null }[]
+  conditions: { type: string; status: string; reason?: string | null; message?: string | null; last_transition?: string | null }[]
+  resources?: { cpu_request: number; cpu_limit: number; mem_request: number; mem_limit: number; gpu: number }
+  pod_ip?: string | null; host_ip?: string | null
+  service_account?: string | null; restart_policy?: string | null
+}
+export interface K8sEvent {
+  type?: string | null; reason?: string | null; message?: string | null; count: number
+  first_timestamp?: string | null; last_timestamp?: string | null
+  involved_kind?: string | null; involved_name?: string | null; involved_namespace?: string | null
+  source?: string | null
+}
+export interface K8sWorkload {
+  kind: string; name: string; namespace: string; ready?: string
+  replicas?: number; ready_replicas?: number; available_replicas?: number; updated_replicas?: number
+  desired?: number; strategy?: string | null; schedule?: string | null; suspend?: boolean
+  completions?: number | null; succeeded?: number; failed?: number; active?: number
+  last_schedule?: string | null; created?: string | null; images?: string[]
+}
+export interface K8sService {
+  name: string; namespace: string; type?: string | null; cluster_ip?: string | null
+  external_ips?: string[]; ports: { port: number; target_port: string; protocol?: string; node_port?: number | null; name?: string | null }[]
+  selector: Record<string, string>; created?: string | null
+}
+export interface K8sIngress { name: string; namespace: string; hosts: string[]; class_name?: string | null; created?: string | null }
+export interface K8sPvc {
+  name: string; namespace: string; status?: string | null; volume?: string | null
+  storage_class?: string | null; capacity: number; access_modes: string[]; created?: string | null
+}
+export interface K8sPv {
+  name: string; status?: string | null; capacity: number; storage_class?: string | null
+  reclaim_policy?: string | null; claim?: string | null; access_modes: string[]; created?: string | null
+}
+export interface K8sConfigMap { name: string; namespace: string; keys: string[]; key_count: number; created?: string | null }
+export interface K8sSecretMeta { name: string; namespace: string; type?: string | null; keys: string[]; key_count: number; created?: string | null }
 export interface K8sOverview {
   status: K8sStatus
   namespaces: number
@@ -156,8 +202,9 @@ export interface K8sOverview {
   pods: K8sPod[]
   counts: {
     pods?: number; running?: number; pending?: number; failed?: number
-    nodes?: number; nodes_ready?: number
+    nodes?: number; nodes_ready?: number; gpu_pods?: number; gpu_node_capacity?: number
   }
+  workloads?: Record<string, number>
 }
 
 const TOKEN_KEY = "dm.token"
@@ -243,4 +290,49 @@ export const api = {
   k8sNodes: () => request<K8sNode[]>("/k8s/nodes"),
   k8sPods: (namespace?: string) =>
     request<K8sPod[]>(`/k8s/pods${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sPod: (namespace: string, name: string) =>
+    request<K8sPodDetail>(`/k8s/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`),
+  k8sPodEvents: (namespace: string, name: string) =>
+    request<K8sEvent[]>(`/k8s/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/events`),
+  k8sPodLogs: (namespace: string, name: string, container?: string, tail = 300) =>
+    request<{ logs: string }>(
+      `/k8s/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs?tail=${tail}${container ? `&container=${encodeURIComponent(container)}` : ""}`,
+    ),
+  k8sPodDelete: (namespace: string, name: string) =>
+    request<{ ok: boolean }>(`/k8s/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  k8sPodLogsWsUrl: (namespace: string, name: string, container?: string, tail = 200) => {
+    const proto = location.protocol === "https:" ? "wss" : "ws"
+    const q = new URLSearchParams({ tail: String(tail), token: token.get() ?? "" })
+    if (container) q.set("container", container)
+    return `${proto}://${location.host}/api/k8s/pods/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/logs/ws?${q}`
+  },
+  k8sEvents: (namespace?: string) =>
+    request<K8sEvent[]>(`/k8s/events${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sDeployments: (namespace?: string) =>
+    request<K8sWorkload[]>(`/k8s/deployments${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sScaleDeployment: (namespace: string, name: string, replicas: number) =>
+    request<{ ok: boolean }>(`/k8s/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/scale`, {
+      method: "POST", body: JSON.stringify({ replicas }),
+    }),
+  k8sRestartDeployment: (namespace: string, name: string) =>
+    request<{ ok: boolean }>(`/k8s/deployments/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/restart`, { method: "POST" }),
+  k8sStatefulSets: (namespace?: string) =>
+    request<K8sWorkload[]>(`/k8s/statefulsets${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sDaemonSets: (namespace?: string) =>
+    request<K8sWorkload[]>(`/k8s/daemonsets${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sJobs: (namespace?: string) =>
+    request<K8sWorkload[]>(`/k8s/jobs${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sCronJobs: (namespace?: string) =>
+    request<K8sWorkload[]>(`/k8s/cronjobs${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sServices: (namespace?: string) =>
+    request<K8sService[]>(`/k8s/services${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sIngresses: (namespace?: string) =>
+    request<K8sIngress[]>(`/k8s/ingresses${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sPvcs: (namespace?: string) =>
+    request<K8sPvc[]>(`/k8s/pvcs${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sPvs: () => request<K8sPv[]>("/k8s/pvs"),
+  k8sConfigMaps: (namespace?: string) =>
+    request<K8sConfigMap[]>(`/k8s/configmaps${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
+  k8sSecrets: (namespace?: string) =>
+    request<K8sSecretMeta[]>(`/k8s/secrets${namespace ? `?namespace=${encodeURIComponent(namespace)}` : ""}`),
 }
