@@ -220,7 +220,9 @@ export default function StackMonitorPage() {
                     </div>
                     <details className="mt-4">
                       <summary className="text-muted-foreground flex cursor-pointer items-center gap-1.5 text-xs hover:text-foreground"><ScrollText className="size-3.5" /> Show logs</summary>
-                      <div className="mt-2 h-64 overflow-hidden rounded-md border"><LogsPanel containerId={c.id} className="h-full p-2" /></div>
+                      <div className="mt-2 flex h-64 flex-col overflow-hidden rounded-md border">
+                        <LogsPanel containerId={c.id} className="min-h-0 flex-1 p-2" />
+                      </div>
                     </details>
                   </div>
                 )}
