@@ -51,13 +51,13 @@ export default function StacksPage() {
         {(stacks.data ?? []).map((s) => {
           const busy = isBusy(s.name)
           return (
-            <Card key={s.name} className="gap-4">
+            <Card key={s.name} className="gap-4 overflow-hidden">
               <CardHeader>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <CardTitle className="flex items-center gap-2 truncate">
-                      <Link to={`/stacks/${s.name}`} className="hover:underline">{s.name}</Link>
-                      {!s.managed && <Badge variant="outline" className="text-[10px]">external</Badge>}
+                    <CardTitle className="flex min-w-0 items-center gap-2">
+                      <Link to={`/stacks/${s.name}`} className="min-w-0 truncate hover:underline">{s.name}</Link>
+                      {!s.managed && <Badge variant="outline" className="shrink-0 text-[10px]">external</Badge>}
                     </CardTitle>
                     <CardDescription className="mt-1 truncate font-mono text-xs">{s.path ?? "not in stacks folder"}</CardDescription>
                   </div>

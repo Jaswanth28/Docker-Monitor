@@ -33,6 +33,25 @@ PCI_VENDOR = {
 
 _last_tool_error: str | None = None
 
+# WSL2's GPU shim (nvidia-smi + libnvidia-ml/libcuda) is injected by the Windows
+# host into /usr/lib/wsl/lib on the WSL distro itself. It is never on a plain
+# container's $PATH — and critically, entering the host's mount namespace with
+# nsenter does NOT give the child process the host's $PATH (nsenter -m only
+# swaps the filesystem view; the exec's PATH lookup still uses this process's
+# own environment). So a bare `nsenter -t 1 -m -- nvidia-smi` fails to find the
+# binary even though it's reachable in that mount namespace. We resolve the
+# absolute path once (checking WSL's location first, then normal Linux
+# locations) and always exec by full path afterwards.
+_CANDIDATE_NVIDIA_SMI_PATHS = [
+    "/usr/lib/wsl/lib/nvidia-smi",  # WSL2 GPU passthrough (Windows host + WSLg)
+    "/usr/bin/nvidia-smi",
+    "/usr/local/bin/nvidia-smi",
+    "/opt/nvidia/bin/nvidia-smi",
+    "/run/nvidia/bin/nvidia-smi",
+]
+_nvidia_smi_path: str | None = None
+_nvidia_smi_searched = False
+
 
 def _run(argv: list[str], timeout: float = 8.0) -> subprocess.CompletedProcess[str] | None:
     try:
@@ -62,6 +81,43 @@ def _host_run(*args: str, timeout: float = 8.0) -> str | None:
         if err:
             last_err = err.splitlines()[-1][:240]
     _last_tool_error = last_err
+    return None
+
+
+def _locate_nvidia_smi() -> str | None:
+    """Find the real nvidia-smi binary, checking the host mount namespace by
+    absolute path so the WSL2 (/usr/lib/wsl/lib) location is found even though
+    it's never on any process's $PATH."""
+    global _nvidia_smi_path, _nvidia_smi_searched
+    if _nvidia_smi_searched:
+        return _nvidia_smi_path
+    _nvidia_smi_searched = True
+
+    found = shutil.which("nvidia-smi")
+    if found:
+        _nvidia_smi_path = found
+        return found
+
+    nsenter = shutil.which("nsenter")
+    if nsenter:
+        for candidate in _CANDIDATE_NVIDIA_SMI_PATHS:
+            r = _run([nsenter, "-t", "1", "-m", "--", "test", "-x", candidate], timeout=4.0)
+            if r and r.returncode == 0:
+                _nvidia_smi_path = candidate
+                return candidate
+        # Fall back to a live search in case the driver lives somewhere else.
+        probe = _run(
+            [nsenter, "-t", "1", "-m", "--", "sh", "-c",
+             "command -v nvidia-smi 2>/dev/null || "
+             "find /usr /opt /run -maxdepth 4 -name nvidia-smi -type f 2>/dev/null | head -1"],
+            timeout=6.0,
+        )
+        if probe and probe.returncode == 0:
+            lines = [l.strip() for l in (probe.stdout or "").splitlines() if l.strip()]
+            if lines:
+                _nvidia_smi_path = lines[0]
+                return lines[0]
+
     return None
 
 
@@ -123,7 +179,15 @@ def _host_mem_bytes() -> tuple[int, int]:
 
 
 def _nvidia_smi(*args: str) -> str | None:
-    return _host_run("nvidia-smi", *args)
+    global _last_tool_error
+    path = _locate_nvidia_smi()
+    if not path:
+        _last_tool_error = (
+            "nvidia-smi binary not found in the container or the host mount "
+            "namespace (checked WSL's /usr/lib/wsl/lib and standard Linux paths)"
+        )
+        return None
+    return _host_run(path, *args)
 
 
 def _discover_drm_cards() -> list[dict[str, Any]]:
