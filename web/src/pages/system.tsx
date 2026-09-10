@@ -25,6 +25,7 @@ export default function SystemPage() {
   const { isAdmin } = useAuth()
   const nav = useNavigate()
   const [confirmRestart, setConfirmRestart] = useState(false)
+  const [manualRefresh, setManualRefresh] = useState(false)
   const sys = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 30000 })
   const ov = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5000 })
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 15000 })
@@ -38,6 +39,23 @@ export default function SystemPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  async function onRefresh() {
+    if (manualRefresh) return
+    setManualRefresh(true)
+    const started = Date.now()
+    try {
+      await Promise.all([sys.refetch(), ov.refetch(), health.refetch()])
+      toast.success("Refreshed")
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Refresh failed")
+    } finally {
+      // Keep the spin visible long enough to notice (auto-poll also uses isFetching).
+      const wait = Math.max(0, 700 - (Date.now() - started))
+      if (wait) await new Promise((r) => setTimeout(r, wait))
+      setManualRefresh(false)
+    }
+  }
 
   const d = sys.data
   const o = ov.data
@@ -55,7 +73,10 @@ export default function SystemPage() {
           <h1 className="text-xl font-semibold sm:text-2xl">System</h1>
           <p className="text-muted-foreground text-sm break-words">{d ? `Docker ${d.server_version} · ${d.os} · ${d.kernel} · ${d.arch}` : "…"}{o?.collector.error && <span className="text-destructive"> · collector: {o.collector.error}</span>}</p>
         </div>
-        <Button variant="outline" size="sm" className="w-fit shrink-0" onClick={() => { sys.refetch(); ov.refetch() }}><RefreshCw className={ov.isFetching ? "animate-spin" : ""} /> Refresh</Button>
+        <Button variant="outline" size="sm" className="w-fit shrink-0" onClick={onRefresh} disabled={manualRefresh}>
+          <RefreshCw className={manualRefresh ? "animate-spin" : undefined} />
+          {manualRefresh ? "Refreshing…" : "Refresh"}
+        </Button>
       </div>
 
       {/* host */}
@@ -66,15 +87,15 @@ export default function SystemPage() {
         <StatTile icon={<MemoryStick className="size-3.5" />} label="Host memory" value={host ? formatBytes(host.mem_used) : "—"}
           sub={host ? `${host.mem_percent}% of ${formatBytes(host.mem_total)} · containers hold ${formatBytes(o!.totals.mem_usage)}` : undefined}
           meter={host ? { value: host.mem_percent } : undefined} spark={o?.host_history.map((h) => h.mem_used)} sparkMax={host?.mem_total} sparkFormat={formatBytes} />
-        <StatTile icon={<HardDrive className="size-3.5" />} label={o?.disk_is_host ? "Host disk (WSL root)" : "Disk (container view)"} value={o?.disk ? formatBytes(o.disk.used) : "—"}
+        <StatTile icon={<HardDrive className="size-3.5" />} label={o?.disk_is_host ? "Host disk" : "Disk (container view)"} value={o?.disk ? formatBytes(o.disk.used) : "—"}
           sub={o?.disk ? `${o.disk.percent}% of ${formatBytes(o.disk.total)} · ${formatBytes(o.disk.free)} free · docker data ${formatBytes(dockerTotal)}` : undefined}
           meter={o?.disk ? { value: o.disk.percent } : undefined} />
         <StatTile
           icon={<CircuitBoard className="size-3.5" />}
-          label={gpuOk ? `GPU memory${(host?.gpu_count ?? 0) > 1 ? ` ×${host?.gpu_count}` : ""}` : "GPU"}
+          label={gpuOk ? (gpu?.unified_memory || host?.gpu_unified_memory ? "GPU memory (unified)" : `GPU memory${(host?.gpu_count ?? 0) > 1 ? ` ×${host?.gpu_count}` : ""}`) : "GPU"}
           value={gpuOk && host ? formatBytes(host.gpu_mem_used ?? 0) : "—"}
           sub={gpuOk && host
-            ? `${(host.gpu_mem_percent ?? 0).toFixed(0)}% of ${formatBytes(host.gpu_mem_total ?? 0)} · util ${(host.gpu_util_percent ?? 0).toFixed(0)}% · containers ${formatBytes(o!.totals.gpu_mem_used ?? 0)}`
+            ? `${(host.gpu_mem_percent ?? 0).toFixed(0)}% of ${formatBytes(host.gpu_mem_total ?? 0)}${gpu?.unified_memory || host.gpu_unified_memory ? " host RAM" : ""} · util ${(host.gpu_util_percent ?? 0).toFixed(0)}% · containers ${formatBytes(o!.totals.gpu_mem_used ?? 0)}`
             : (gpu?.error ?? "No NVIDIA GPU detected")}
           meter={gpuOk && host ? { value: host.gpu_mem_percent ?? 0 } : undefined}
           spark={gpuOk ? o?.host_history.filter((h) => h.gpu_available).map((h) => h.gpu_mem_used ?? 0) : undefined}
@@ -98,7 +119,11 @@ export default function SystemPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4" /> GPUs</CardTitle>
-              <CardDescription>Live nvidia-smi sample · util and VRAM per device</CardDescription>
+              <CardDescription>
+                {gpu?.unified_memory
+                  ? "GB10 / unified memory — VRAM fields are N/A; showing process-attributed use vs host RAM"
+                  : "Live nvidia-smi sample · util and VRAM per device"}
+              </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {(gpu?.gpus ?? []).map((g) => (
