@@ -24,18 +24,25 @@ services:
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       VIEWER_USERNAME: ${VIEWER_USERNAME:-}
       VIEWER_PASSWORD_HASH: ${VIEWER_PASSWORD_HASH:-}
+      # Hint for NVIDIA Container Toolkit when present (DGX Spark / Jetson / x86).
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: utility,compute,video
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${STACKS_DIR}:${STACKS_DIR}
-      # Read-only view of the WSL root so the System page can report host disk usage.
+      # Read-only view of the host root so the System page can report host disk usage.
       - /:/hostfs:ro
-    pid: host   # lets /proc/stat, /proc/meminfo and loadavg reflect the WSL VM, not the container
-    # CAP_SYS_ADMIN + nsenter → host nvidia-smi / systemctl (daemon-reload, restart docker)
-    cap_add:
-      - SYS_ADMIN
-      - SYS_PTRACE
+    pid: host   # /proc/stat, /proc/meminfo, loadavg, and nsenter→host nvidia-smi
+    # Privileged: fixes "Failed to initialize NVML: Unknown Error" when calling
+    # host nvidia-smi via nsenter (device cgroup blocked GPU nodes). Also needed
+    # for systemctl daemon-reload / restart docker. docker.sock already implies high trust.
+    privileged: true
     security_opt:
       - apparmor:unconfined
+    device_cgroup_rules:
+      - "c 195:* rmw"
+      - "c 234:* rmw"
+      - "c 236:* rmw"
     depends_on:
       - infisical
     labels:
