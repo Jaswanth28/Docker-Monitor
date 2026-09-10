@@ -87,7 +87,7 @@ export default function ContainerDetailPage() {
         )}
       </div>
 
-      {/* stat tiles */}
+      {/* primary metrics */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatTile icon={<Cpu className="size-3.5" />} label="CPU" value={cur ? `${cur.cpu_percent.toFixed(1)}%` : "—"} sub={`limit: ${cpuLimit} · pids ${cur?.pids ?? 0}`}
           meter={cur ? { value: cur.cpu_percent, max: 100 } : undefined} spark={hist.map((h) => h.cpu_percent)} sparkFormat={(v) => `${v.toFixed(1)}%`} />
@@ -97,30 +97,45 @@ export default function ContainerDetailPage() {
           value={(cur?.gpu_mem_used ?? 0) > 0 ? formatBytes(cur!.gpu_mem_used!) : "—"}
           sub={(cur?.gpu_mem_used ?? 0) > 0
             ? `${(cur?.gpu_mem_percent ?? 0).toFixed(1)}% of pool · GPU ${(cur?.gpu_indexes ?? []).join(", ") || "?"}`
-            : "not using GPU (compute util is device-wide, shown on System)"}
+            : "not using GPU memory"}
           meter={(cur?.gpu_mem_used ?? 0) > 0 ? { value: cur!.gpu_mem_percent ?? 0, max: 100 } : undefined}
           spark={hist.map((h) => h.gpu_mem_used ?? 0)} sparkFormat={formatBytes} />
-        <StatTile icon={<HardDrive className="size-3.5" />} label="Storage" value={formatBytes(d.storage.size_rw)} sub={<>writable layer · rootfs {formatBytes(d.storage.size_rootfs)}{cur ? <> · disk r {formatBytes(cur.blk_read)} / w {formatBytes(cur.blk_write)}</> : null}</>} />
+        <StatTile icon={<CircuitBoard className="size-3.5" />} label="GPU utilization"
+          value={`${(cur?.gpu_util_percent ?? 0).toFixed(0)}%`}
+          sub={(cur?.gpu_indexes?.length) ? `compute (SM) · GPU ${(cur.gpu_indexes).join(", ")}` : "compute SM util (nvidia-smi pmon)"}
+          meter={{ value: cur?.gpu_util_percent ?? 0, max: 100 }}
+          spark={hist.map((h) => h.gpu_util_percent ?? 0)} sparkFormat={(v) => `${v.toFixed(0)}%`} />
         <StatTile icon={<Network className="size-3.5" />} label="Network" value={cur ? <span className="text-lg">↓ {rate(cur.net_rx_rate)} <span className="text-muted-foreground">·</span> ↑ {rate(cur.net_tx_rate)}</span> : "—"}
           sub={cur ? `total rx ${formatBytes(cur.net_rx)} · tx ${formatBytes(cur.net_tx)}` : undefined} spark={hist.map((h) => h.net_rx_rate + h.net_tx_rate)} sparkFormat={rate} />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="gap-2 py-4"><CardHeader className="px-4"><CardDescription>Uptime</CardDescription><CardTitle className="text-lg">{uptime}</CardTitle></CardHeader><CardContent className="text-muted-foreground px-4 text-xs">restarts {s.restart_count} · policy {d.restart_policy || "no"} · created {timeAgo(s.created)}</CardContent></Card>
         <Card className="gap-2 py-4"><CardHeader className="px-4"><CardDescription>Ports</CardDescription><CardTitle className="text-lg">{s.ports.filter((p) => p.host_port).length || "none"} published</CardTitle></CardHeader><CardContent className="px-4 text-xs">
           {s.ports.filter((p) => p.host_port).map((p) => <a key={p.private + p.host_port} className="mr-3 font-mono hover:underline" href={`http://localhost:${p.host_port}`} target="_blank" rel="noreferrer">{p.host_ip === "0.0.0.0" || !p.host_ip ? "" : p.host_ip + ":"}{p.host_port} → {p.private}</a>)}
           {s.ports.filter((p) => !p.host_port).length > 0 && <span className="text-muted-foreground">exposed only: {s.ports.filter((p) => !p.host_port).map((p) => p.private).join(", ")}</span>}
         </CardContent></Card>
         <Card className="gap-2 py-4"><CardHeader className="px-4"><CardDescription>Health & exit</CardDescription><CardTitle className="text-lg capitalize">{s.health ?? (running ? "no healthcheck" : `exit ${String(d.state.ExitCode ?? "?")}`)}</CardTitle></CardHeader><CardContent className="text-muted-foreground px-4 text-xs">{d.state.Error ? <span className="text-destructive">{String(d.state.Error)}</span> : `platform ${d.platform ?? "linux"} · user ${d.user || "root"}`}</CardContent></Card>
+        <Card className="gap-2 py-4">
+          <CardHeader className="px-4">
+            <CardDescription className="flex items-center gap-1.5"><HardDrive className="size-3.5" /> Storage</CardDescription>
+            <CardTitle className="text-lg">{formatBytes(d.storage.size_rw)}</CardTitle>
+          </CardHeader>
+          <CardContent className="text-muted-foreground px-4 text-xs">
+            writable layer · rootfs {formatBytes(d.storage.size_rootfs)}
+            {cur ? <> · disk r {formatBytes(cur.blk_read)} / w {formatBytes(cur.blk_write)}</> : null}
+          </CardContent>
+        </Card>
       </div>
 
       {/* history charts */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Activity className="size-4" /> Last {Math.round(hist.length * 5 / 60) || "<1"} min</CardTitle><CardDescription>Sampled every 5 s; hover for values.</CardDescription></CardHeader>
-        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
           <div><div className="text-muted-foreground mb-1 text-xs">CPU %</div><Sparkline data={hist.map((h) => h.cpu_percent)} height={80} format={(v) => `${v.toFixed(1)}%`} label="CPU history" /></div>
           <div><div className="text-muted-foreground mb-1 text-xs">Memory</div><Sparkline data={hist.map((h) => h.mem_usage)} height={80} format={formatBytes} label="Memory history" /></div>
-          <div><div className="text-muted-foreground mb-1 text-xs">GPU memory</div><Sparkline data={hist.map((h) => h.gpu_mem_used ?? 0)} height={80} format={formatBytes} label="GPU history" /></div>
+          <div><div className="text-muted-foreground mb-1 text-xs">GPU compute %</div><Sparkline data={hist.map((h) => h.gpu_util_percent ?? 0)} height={80} format={(v) => `${v.toFixed(0)}%`} label="GPU util history" /></div>
+          <div><div className="text-muted-foreground mb-1 text-xs">GPU memory</div><Sparkline data={hist.map((h) => h.gpu_mem_used ?? 0)} height={80} format={formatBytes} label="GPU mem history" /></div>
           <div><div className="text-muted-foreground mb-1 text-xs">Network (rx+tx)</div><Sparkline data={hist.map((h) => h.net_rx_rate + h.net_tx_rate)} height={80} format={rate} label="Network history" /></div>
         </CardContent>
       </Card>

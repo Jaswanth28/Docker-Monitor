@@ -131,6 +131,7 @@ class Collector:
             "pids": (s.get("pids_stats") or {}).get("current", 0),
             "gpu_mem_used": 0,
             "gpu_mem_percent": 0.0,
+            "gpu_util_percent": 0.0,
             "gpu_indexes": [],
         }
 
@@ -146,7 +147,7 @@ class Collector:
             }
         results = list(self._pool.map(self._sample_container, containers))
 
-        # GPU snapshot once per tick; fold VRAM into each container sample
+        # GPU snapshot once per tick; fold VRAM + SM util into each container sample
         try:
             gpu = sample_gpus([c.id for c in containers])
         except Exception as exc:  # noqa: BLE001
@@ -168,6 +169,7 @@ class Collector:
                 r["gpu_mem_used"] = g["mem_used"]
                 r["gpu_indexes"] = g.get("gpu_indexes") or []
                 r["gpu_mem_percent"] = round(g["mem_used"] / gpu_total * 100, 2) if gpu_total else 0.0
+                r["gpu_util_percent"] = float(g.get("util_percent") or 0.0)
             self.container_history.setdefault(c.id, deque(maxlen=HISTORY)).append(r)
         # drop history for containers that are gone (keep stopped ones a while)
         for cid in list(self.container_history):
@@ -257,6 +259,7 @@ class Collector:
             for i in range(-n, 0):
                 samples = [h[i] for h in histories]
                 gpu_mem = sum(s.get("gpu_mem_used") or 0 for s in samples)
+                gpu_util = round(sum(s.get("gpu_util_percent") or 0 for s in samples), 1)
                 gpu_indexes = set()
                 for s in samples:
                     for idx in s.get("gpu_indexes") or []:
@@ -271,6 +274,7 @@ class Collector:
                     "blk_read": sum(s["blk_read"] for s in samples),
                     "blk_write": sum(s["blk_write"] for s in samples),
                     "gpu_mem_used": gpu_mem,
+                    "gpu_util_percent": gpu_util,
                     "gpu_indexes": sorted(gpu_indexes),
                     "gpu_mem_percent": round(gpu_mem / pool * 100, 2) if pool else 0.0,
                 })
@@ -302,12 +306,13 @@ class Collector:
         for e in latest:
             key = e.get("project") or "(no stack)"
             s = stacks.setdefault(key, {
-                "name": key, "cpu_percent": 0.0, "mem_usage": 0, "gpu_mem_used": 0,
+                "name": key, "cpu_percent": 0.0, "mem_usage": 0, "gpu_mem_used": 0, "gpu_util_percent": 0.0,
                 "containers": 0, "net_rx_rate": 0.0, "net_tx_rate": 0.0,
             })
             s["cpu_percent"] = round(s["cpu_percent"] + e["cpu_percent"], 2)
             s["mem_usage"] += e["mem_usage"]
             s["gpu_mem_used"] += e.get("gpu_mem_used") or 0
+            s["gpu_util_percent"] = round(s["gpu_util_percent"] + (e.get("gpu_util_percent") or 0), 1)
             s["containers"] += 1
             s["net_rx_rate"] += e["net_rx_rate"]
             s["net_tx_rate"] += e["net_tx_rate"]
@@ -347,6 +352,7 @@ class Collector:
                 "name": meta.get("name") or cid[:12],
                 "project": meta.get("project"),
                 "service": meta.get("service"),
+                "util_percent": agg.get("util_percent") or 0.0,
             })
         gpu_users.sort(key=lambda e: e["mem_used"], reverse=True)
         return {
