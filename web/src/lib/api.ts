@@ -21,9 +21,27 @@ export interface StackDetail { name: string; compose: string; compose_file: stri
 export interface Image { id: string; short_id: string; tags: string[]; size: number; created: string; in_use: boolean }
 export interface Volume { name: string; driver: string; mountpoint: string; created: string; in_use: boolean }
 export interface Network { id: string; name: string; driver: string; scope: string; in_use: boolean; protected: boolean }
+export interface PlatformInfo {
+  kind: string
+  label: string
+  arch: string
+  machine?: string
+  docker_desktop?: boolean
+  apple_silicon?: boolean
+  nvidia?: boolean
+  amd?: boolean
+  intel?: boolean
+  gpu_vendors?: string[]
+  gpu_vendor?: string | null
+  gpu_note?: string | null
+  os?: string | null
+  kernel?: string | null
+  host_fs?: string
+}
 export interface SystemInfo {
   server_version: string; api_version: string; os: string; kernel: string; arch: string; ncpu: number; mem_total: number
   containers: number; containers_running: number; containers_paused: number; containers_stopped: number; images: number; docker_root: string; now: string
+  platform?: PlatformInfo | null
 }
 export interface Sample {
   t: number; cpu_percent: number; mem_usage: number; mem_limit: number; mem_percent: number
@@ -52,6 +70,7 @@ export interface GpuDevice {
   index: number; uuid: string; name: string; util_percent: number
   mem_used: number; mem_total: number; mem_percent: number
   temperature_c: number | null; power_w: number | null
+  vendor?: string; unified_memory?: boolean; driver?: string
 }
 export interface GpuContainerUsage {
   container_id: string; name: string; project: string | null; service: string | null
@@ -60,6 +79,7 @@ export interface GpuContainerUsage {
 export interface GpuProcess {
   gpu_uuid: string; gpu_index: number | null; pid: number; process_name: string
   mem_used: number; util_percent?: number; container_id: string | null; container_name?: string | null; project?: string | null
+  vendor?: string
 }
 export interface GpuSnapshot {
   available: boolean
@@ -68,6 +88,7 @@ export interface GpuSnapshot {
   containers: GpuContainerUsage[]
   by_container: Record<string, { container_id: string; mem_used: number; processes: number; gpu_indexes: number[] }>
   totals: { mem_used: number; mem_total: number; mem_percent: number; util_percent: number; count: number }
+  vendors?: string[]
   unified_memory?: boolean
   host_mem_total?: number | null
   host_mem_used?: number | null
@@ -92,6 +113,7 @@ export interface Overview {
   disk_is_host: boolean
   docker_df: { images: DfBucket; containers: DfBucket; volumes: DfBucket; build_cache: DfBucket; at: number } | { error: string }
   gpu?: GpuSnapshot
+  platform?: PlatformInfo
   top_cpu: TopEntry[]
   top_mem: TopEntry[]
   top_gpu?: TopEntry[]

@@ -265,8 +265,15 @@ def prune(what: str) -> dict:
 
 
 def system_info() -> dict:
+    # Lazy import: platform_info must not import this module at load time.
+    from .platform_info import detect_platform
+
     info = client().info()
     ver = client().version()
+    try:
+        plat = detect_platform()
+    except Exception:  # noqa: BLE001
+        plat = None
     return {
         "server_version": ver.get("Version"),
         "api_version": ver.get("ApiVersion"),
@@ -282,4 +289,5 @@ def system_info() -> dict:
         "images": info.get("Images"),
         "docker_root": info.get("DockerRootDir"),
         "now": datetime.now(timezone.utc).isoformat(),
+        "platform": plat,
     }

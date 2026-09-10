@@ -1,4 +1,6 @@
 # ── Stage 1: build the React app ──────────────────────────────────────
+# Native on Apple Silicon (linux/arm64) and amd64; for multi-arch:
+#   docker buildx build --platform linux/amd64,linux/arm64 ...
 FROM node:22-alpine AS web-build
 WORKDIR /web
 COPY web/package*.json ./
