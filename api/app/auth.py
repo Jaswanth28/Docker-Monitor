@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-import bcrypt
 from fastapi import Depends, HTTPException, Query, WebSocket, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
@@ -11,6 +10,7 @@ from pydantic import BaseModel
 
 from .config import settings
 from .secrets import store
+from . import users_service
 
 Role = Literal["admin", "viewer"]
 oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -22,19 +22,10 @@ class User(BaseModel):
 
 
 def _check(username: str, password: str) -> User | None:
-    candidates = [
-        (store.get("ADMIN_USERNAME"), store.get("ADMIN_PASSWORD_HASH"), "admin"),
-        (store.get("VIEWER_USERNAME"), store.get("VIEWER_PASSWORD_HASH"), "viewer"),
-    ]
-    for name, pw_hash, role in candidates:
-        if name and pw_hash and username == name:
-            try:
-                if bcrypt.checkpw(password.encode(), pw_hash.encode()):
-                    return User(username=name, role=role)  # type: ignore[arg-type]
-            except ValueError:
-                return None
-            return None
-    return None
+    result = users_service.authenticate(username, password)
+    if not result:
+        return None
+    return User(username=result["username"], role=result["role"])  # type: ignore[arg-type]
 
 
 def authenticate(username: str, password: str) -> str:

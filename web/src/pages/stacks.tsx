@@ -13,6 +13,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { StateBadge } from "@/components/state-badge"
+import { Skeleton } from "@/components/ui/skeleton"
+
+function StackCardSkeleton() {
+  return (
+    <Card className="gap-4 overflow-hidden">
+      <CardHeader>
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="mt-2 h-3 w-48" />
+          </div>
+          <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Skeleton className="h-3 w-40" />
+        <div className="flex flex-wrap gap-1"><Skeleton className="h-5 w-14 rounded-full" /><Skeleton className="h-5 w-16 rounded-full" /></div>
+        <div className="flex gap-1 border-t pt-3"><Skeleton className="h-8 w-16" /><Skeleton className="h-8 w-16" /><Skeleton className="h-8 w-8" /></div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function StacksPage() {
   const { isAdmin } = useAuth()
@@ -44,10 +66,10 @@ export default function StacksPage() {
         {isAdmin && <Button asChild className="w-fit"><Link to="/stacks/new"><Plus /> New stack</Link></Button>}
       </div>
 
-      {stacks.isLoading && <p className="text-muted-foreground">Loading…</p>}
       {stacks.error && <p className="text-destructive">{(stacks.error as Error).message}</p>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {stacks.isLoading && Array.from({ length: 3 }).map((_, i) => <StackCardSkeleton key={i} />)}
         {(stacks.data ?? []).map((s) => {
           const busy = isBusy(s.name)
           return (

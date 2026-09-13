@@ -186,6 +186,49 @@ def list_images() -> list[dict]:
     return out
 
 
+def pull_image(repository: str, tag: str = "latest") -> dict:
+    """Pull an image (e.g. from the Marketplace tab). Blocking — call via threadpool."""
+    try:
+        img = client().images.pull(repository, tag=tag)
+    except NotFound:
+        raise HTTPException(404, f"{repository}:{tag} not found on the registry")
+    except APIError as e:
+        raise HTTPException(502, e.explanation or str(e))
+    # images.pull() returns a single Image when a tag is given.
+    tags = getattr(img, "tags", None) or [f"{repository}:{tag}"]
+    return {"ok": True, "id": img.id, "short_id": img.short_id, "tags": tags}
+
+
+def tag_image(image_id: str, repository: str, tag: str) -> dict:
+    try:
+        img = client().images.get(image_id)
+        img.tag(repository, tag=tag)
+    except NotFound:
+        raise HTTPException(404, "Image not found")
+    except APIError as e:
+        raise HTTPException(409, e.explanation or str(e))
+    return {"ok": True}
+
+
+def push_image(repository: str, tag: str, auth_config: dict[str, str]) -> dict:
+    """Push repository:tag to its registry (Docker Hub by default). Blocking, streams
+    progress from the daemon; call via threadpool."""
+    lines: list[str] = []
+    try:
+        for chunk in client().api.push(repository, tag=tag, auth_config=auth_config, stream=True, decode=True):
+            if isinstance(chunk, dict) and chunk.get("error"):
+                raise HTTPException(502, chunk["error"])
+            status = (chunk or {}).get("status") if isinstance(chunk, dict) else None
+            if status:
+                progress = (chunk or {}).get("progress") or ""
+                line = f"{status} {progress}".strip()
+                if not lines or lines[-1] != line:
+                    lines.append(line)
+    except APIError as e:
+        raise HTTPException(502, e.explanation or str(e))
+    return {"ok": True, "output": "\n".join(lines[-80:])}
+
+
 def remove_image(image_id: str, force: bool = False) -> dict:
     try:
         client().images.remove(image_id, force=force)

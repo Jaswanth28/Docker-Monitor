@@ -14,8 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import docker_service as dk
+from . import infisical_registry
 from . import kube_service as kube
+from . import marketplace_service as mp
 from . import stacks_service as st
+from . import users_service as users
 from .auth import User, authenticate, current_user, require_admin, ws_user
 from .host_ctl import docker_control
 from .metrics import collector
@@ -305,6 +308,113 @@ async def system_df_refresh():
 async def system_docker_control(action: str):
     """Run systemctl daemon-reload or restart docker on the host (via nsenter)."""
     return await run_in_threadpool(docker_control, action)
+
+
+# ───────────────────────────── marketplace (Docker Hub browsing) ─────────────────────────────
+class PullBody(BaseModel):
+    repository: str
+    tag: str = "latest"
+
+
+@app.get("/api/marketplace/popular", dependencies=[Depends(current_user)])
+async def marketplace_popular():
+    return await mp.popular()
+
+
+@app.get("/api/marketplace/search", dependencies=[Depends(current_user)])
+async def marketplace_search(q: str, page: int = 1, page_size: int = 24):
+    return await mp.search(q, page, page_size)
+
+
+@app.post("/api/marketplace/pull", dependencies=[Depends(require_admin)])
+async def marketplace_pull(body: PullBody):
+    return await run_in_threadpool(dk.pull_image, body.repository, body.tag)
+
+
+@app.get("/api/marketplace/{namespace}/{name}", dependencies=[Depends(current_user)])
+async def marketplace_repo(namespace: str, name: str):
+    return await mp.repo_detail(namespace, name)
+
+
+@app.get("/api/marketplace/{namespace}/{name}/tags", dependencies=[Depends(current_user)])
+async def marketplace_tags(namespace: str, name: str, q: str | None = None, page: int = 1, page_size: int = 24):
+    return await mp.tags(namespace, name, q, page, page_size)
+
+
+# ───────────────────────────── Docker Hub sign-in (browsing private repos + pushing) ─────────────────────────────
+class DockerHubLoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class PushBody(BaseModel):
+    repository: str
+    tag: str = "latest"
+
+
+@app.get("/api/dockerhub/status", dependencies=[Depends(current_user)])
+async def dockerhub_status():
+    return mp.hub_status()
+
+
+@app.post("/api/dockerhub/login", dependencies=[Depends(require_admin)])
+async def dockerhub_login(body: DockerHubLoginBody):
+    return await mp.hub_login(body.username, body.password)
+
+
+@app.post("/api/dockerhub/logout", dependencies=[Depends(require_admin)])
+async def dockerhub_logout():
+    return mp.hub_logout()
+
+
+@app.post("/api/images/{image_id}/push", dependencies=[Depends(require_admin)])
+async def image_push(image_id: str, body: PushBody):
+    auth = mp.hub_credentials()
+    if not auth:
+        # 409, not 401: this isn't about the caller's own dashboard session —
+        # a 401 here would trip the frontend's "your session expired" logout.
+        raise HTTPException(409, "Sign in to Docker Hub first (Marketplace tab)")
+    await run_in_threadpool(dk.tag_image, image_id, body.repository, body.tag)
+    return await run_in_threadpool(dk.push_image, body.repository, body.tag, auth)
+
+
+# ───────────────────────────── user management ─────────────────────────────
+class CreateUserBody(BaseModel):
+    username: str
+    password: str
+    role: users.Role
+
+
+class UpdateUserBody(BaseModel):
+    password: str | None = None
+    role: users.Role | None = None
+
+
+@app.get("/api/users", dependencies=[Depends(require_admin)])
+async def list_users():
+    return await run_in_threadpool(users.list_users)
+
+
+@app.post("/api/users", dependencies=[Depends(require_admin)])
+async def create_user(body: CreateUserBody):
+    return await run_in_threadpool(users.create_user, body.username, body.password, body.role)
+
+
+@app.put("/api/users/{username}", dependencies=[Depends(require_admin)])
+async def update_user(username: str, body: UpdateUserBody):
+    return await run_in_threadpool(users.update_user, username, body.password, body.role)
+
+
+@app.delete("/api/users/{username}")
+async def delete_user(username: str, requester: User = Depends(require_admin)):
+    return await run_in_threadpool(users.delete_user, username, requester.username)
+
+
+@app.get("/api/infisical/projects", dependencies=[Depends(require_admin)])
+async def infisical_projects():
+    """Projects created by scripts/bootstrap_infisical.py, read back from
+    Infisical's own Postgres. Empty list if bootstrap was never run."""
+    return await run_in_threadpool(infisical_registry.list_projects)
 
 
 # ───────────────────────────── kubernetes (optional) ─────────────────────────────

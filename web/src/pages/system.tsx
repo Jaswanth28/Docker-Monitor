@@ -15,6 +15,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { RankedBars, StackedBar, StatTile, Meter } from "@/components/charts"
+import { Skeleton } from "@/components/ui/skeleton"
+
+function StatTileSkeleton() {
+  return (
+    <div className="bg-card flex flex-col gap-2 rounded-lg border p-3">
+      <Skeleton className="h-3 w-20" />
+      <Skeleton className="h-6 w-24" />
+      <Skeleton className="h-3 w-32" />
+    </div>
+  )
+}
 
 function fmtUptime(s: number) {
   const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60)
@@ -29,6 +40,7 @@ export default function SystemPage() {
   const sys = useQuery({ queryKey: ["system"], queryFn: api.system, refetchInterval: 30000 })
   const ov = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5000 })
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 15000 })
+  const infisicalProjects = useQuery({ queryKey: ["infisical-projects"], queryFn: api.infisicalProjects, enabled: isAdmin, staleTime: 30_000 })
   const reload = useMutation({ mutationFn: api.reloadSecrets, onSuccess: (s) => { toast.success(`Secrets reloaded from ${s.source}`); health.refetch() }, onError: (e: Error) => toast.error(e.message) })
   const refreshDf = useMutation({ mutationFn: api.refreshDf, onSuccess: () => { toast.success("Storage figures refreshed"); ov.refetch() }, onError: (e: Error) => toast.error(e.message) })
   const dockerCtl = useMutation({
@@ -89,6 +101,11 @@ export default function SystemPage() {
       </div>
 
       {/* host */}
+      {!d && !o ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <StatTileSkeleton key={i} />)}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile icon={<Cpu className="size-3.5" />} label="Host CPU" value={host ? `${host.cpu_percent.toFixed(1)}%` : "—"}
           sub={host ? `${d?.ncpu ?? "?"} cores · load ${host.load.map((l) => l.toFixed(2)).join(" / ")} · containers use ${o!.totals.cpu_percent.toFixed(0)}% of one core` : undefined}
@@ -112,6 +129,7 @@ export default function SystemPage() {
           sparkFormat={formatBytes}
         />
       </div>
+      )}
 
       {apple && (
         <Card>
@@ -313,6 +331,21 @@ export default function SystemPage() {
           {sec && sec.missing.length > 0 && <p className="text-destructive text-xs">Missing: {sec.missing.join(", ")}</p>}
           <div className="text-muted-foreground text-xs">Viewer account: {sec?.viewer_enabled ? "enabled" : "not configured (set VIEWER_USERNAME / VIEWER_PASSWORD_HASH)"}</div>
           {isAdmin && <Button size="sm" variant="outline" className="w-fit" onClick={() => reload.mutate()} disabled={reload.isPending}><RefreshCw className={reload.isPending ? "animate-spin" : ""} /> Reload secrets from Infisical</Button>}
+          {isAdmin && infisicalProjects.data && infisicalProjects.data.length > 0 && (
+            <div className="mt-1 border-t pt-3">
+              <div className="text-muted-foreground mb-1.5 text-xs uppercase tracking-wide">Bootstrapped by scripts/bootstrap_infisical.py</div>
+              <div className="flex flex-col gap-1.5">
+                {infisicalProjects.data.map((p) => (
+                  <div key={p.project_id} className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs">
+                    <Badge variant="outline">{p.project_name}</Badge>
+                    <span className="text-muted-foreground">{p.project_id}</span>
+                    <span className="text-muted-foreground">· env {p.environment_slug}</span>
+                    <span className="text-muted-foreground">· identity {p.identity_client_id}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

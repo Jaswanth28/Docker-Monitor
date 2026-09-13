@@ -7,10 +7,12 @@ import ContainerDetailPage from "@/pages/container-detail"
 import StacksPage from "@/pages/stacks"
 import StackMonitorPage from "@/pages/stack-monitor"
 import StackEditorPage from "@/pages/stack-editor"
+import MarketplacePage from "@/pages/marketplace"
 import ResourcesPage from "@/pages/resources"
 import SystemPage from "@/pages/system"
 import KubernetesPage from "@/pages/kubernetes"
 import KubernetesPodPage from "@/pages/kubernetes-pod"
+import UsersPage from "@/pages/users"
 import { Loader2 } from "lucide-react"
 
 export default function App() {
@@ -36,10 +38,12 @@ export default function App() {
         <Route path="/stacks/new" element={<StackEditorPage />} />
         <Route path="/stacks/:name" element={<StackMonitorPage />} />
         <Route path="/stacks/:name/edit" element={<StackEditorPage />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/kubernetes" element={<KubernetesPage />} />
         <Route path="/kubernetes/pods/:namespace/:name" element={<KubernetesPodPage />} />
         <Route path="/system" element={<SystemPage />} />
+        <Route path="/users" element={<UsersPage />} />
         <Route path="*" element={<Navigate to="/containers" replace />} />
       </Route>
     </Routes>

@@ -125,6 +125,26 @@ export interface Overview {
 }
 export interface Health { ok: boolean; secrets: { source: string; error: string | null; missing: string[]; infisical_configured: boolean; viewer_enabled: boolean } }
 
+export interface MarketplaceImage {
+  namespace: string; name: string; slug: string; description: string
+  stars: number; pulls: number; is_official: boolean; is_automated: boolean
+  last_updated: string | null
+}
+export interface MarketplaceTag {
+  name: string; digest: string | null; last_updated: string | null
+  size: number; architectures: string[]
+}
+export interface MarketplaceSearch { count: number; results: MarketplaceImage[] }
+export interface MarketplaceTags { count: number; results: MarketplaceTag[] }
+export interface MarketplacePopular { results: MarketplaceImage[]; error?: string | null }
+export interface PullResult { ok: boolean; id: string; short_id: string; tags: string[] }
+export interface DockerHubStatus { signed_in: boolean; username: string | null }
+export interface PushResult { ok: boolean; output: string }
+export interface InfisicalProject {
+  org_name: string; project_id: string; project_name: string; environment_slug: string
+  identity_client_id: string; admin_email: string; created_at: string
+}
+
 export interface K8sStatus {
   enabled: boolean
   connected: boolean
@@ -225,7 +245,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (t) headers.Authorization = `Bearer ${t}`
   if (init.body && typeof init.body === "string") headers["Content-Type"] = "application/json"
   const res = await fetch(`/api${path}`, { ...init, headers })
-  if (res.status === 401 && !path.startsWith("/auth/login")) {
+  // A 401 from a third-party sign-in (Docker Hub) means THOSE credentials were
+  // wrong — it says nothing about this dashboard's own session, so it must not
+  // force-logout the admin the way an expired/invalid dashboard token would.
+  if (res.status === 401 && !path.startsWith("/auth/login") && !path.startsWith("/dockerhub")) {
     token.clear()
     window.dispatchEvent(new Event("dm:logout"))
   }
@@ -283,6 +306,33 @@ export const api = {
   deleteNetwork: (id: string) => request<{ ok: boolean }>(`/networks/${encodeURIComponent(id)}`, { method: "DELETE" }),
   prune: (what: string) => request<Record<string, unknown>>(`/prune/${what}`, { method: "POST" }),
   system: () => request<SystemInfo>("/system"),
+
+  marketplacePopular: () => request<MarketplacePopular>("/marketplace/popular"),
+  marketplaceSearch: (q: string, page = 1) =>
+    request<MarketplaceSearch>(`/marketplace/search?q=${encodeURIComponent(q)}&page=${page}`),
+  marketplaceTags: (namespace: string, name: string, q?: string, page = 1) =>
+    request<MarketplaceTags>(
+      `/marketplace/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}/tags?page=${page}${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+    ),
+  pullImage: (repository: string, tag: string) =>
+    request<PullResult>("/marketplace/pull", { method: "POST", body: JSON.stringify({ repository, tag }) }),
+
+  dockerHubStatus: () => request<DockerHubStatus>("/dockerhub/status"),
+  dockerHubLogin: (username: string, password: string) =>
+    request<{ ok: boolean; username: string }>("/dockerhub/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+  dockerHubLogout: () => request<{ ok: boolean }>("/dockerhub/logout", { method: "POST" }),
+  pushImage: (imageId: string, repository: string, tag: string) =>
+    request<PushResult>(`/images/${encodeURIComponent(imageId)}/push`, { method: "POST", body: JSON.stringify({ repository, tag }) }),
+
+  listUsers: () => request<User[]>("/users"),
+  createUser: (username: string, password: string, role: Role) =>
+    request<User>("/users", { method: "POST", body: JSON.stringify({ username, password, role }) }),
+  updateUser: (username: string, patch: { password?: string; role?: Role }) =>
+    request<User>(`/users/${encodeURIComponent(username)}`, { method: "PUT", body: JSON.stringify(patch) }),
+  deleteUser: (username: string) =>
+    request<{ ok: boolean }>(`/users/${encodeURIComponent(username)}`, { method: "DELETE" }),
+
+  infisicalProjects: () => request<InfisicalProject[]>("/infisical/projects"),
 
   k8sStatus: () => request<K8sStatus>("/k8s/status"),
   k8sOverview: () => request<K8sOverview>("/k8s/overview"),
