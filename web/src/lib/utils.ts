@@ -12,6 +12,14 @@ export function formatBytes(n: number | undefined | null): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${u[i]}`
 }
 
+export function formatCount(n: number | undefined | null): string {
+  if (!n) return "0"
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(n % 1_000_000_000 === 0 ? 0 : 1)}B`
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`
+  return String(n)
+}
+
 export function timeAgo(iso?: string | null): string {
   if (!iso || iso.startsWith("0001")) return "—"
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)

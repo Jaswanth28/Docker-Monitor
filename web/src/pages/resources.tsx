@@ -1,8 +1,9 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { Trash2, Eraser } from "lucide-react"
-import { api, type Network, type Volume } from "@/lib/api"
+import { Trash2, Eraser, Upload, Loader2 } from "lucide-react"
+import { api, type Image, type Network, type Volume } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { formatBytes, timeAgo } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -10,8 +11,31 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { UsageBadge } from "@/components/usage-badge"
+import { Skeleton } from "@/components/ui/skeleton"
+
+function ResourceRowSkeleton({ cols, admin }: { cols: number; admin: boolean }) {
+  return (
+    <TableRow>
+      <TableCell className="pl-4"><Skeleton className="h-4 w-40" /></TableCell>
+      {Array.from({ length: cols - 1 }).map((_, i) => <TableCell key={i}><Skeleton className="h-4 w-20" /></TableCell>)}
+      {admin && <TableCell className="pr-4 text-right"><Skeleton className="ml-auto h-6 w-16" /></TableCell>}
+    </TableRow>
+  )
+}
+
+function guessRepo(image: Image, username: string | null | undefined): string {
+  if (!username) return ""
+  const src = image.tags[0]
+  if (!src) return ""
+  const withoutTag = src.split(":")[0]
+  const name = withoutTag.split("/").pop() || withoutTag
+  return `${username}/${name}`
+}
 
 export default function ResourcesPage() {
   const { isAdmin } = useAuth()
@@ -22,6 +46,10 @@ export default function ResourcesPage() {
 
   const [deleteVolume, setDeleteVolume] = useState<Volume | null>(null)
   const [deleteNetwork, setDeleteNetwork] = useState<Network | null>(null)
+  const [pushFor, setPushFor] = useState<Image | null>(null)
+  const [pushRepo, setPushRepo] = useState("")
+  const [pushTag, setPushTag] = useState("latest")
+  const hub = useQuery({ queryKey: ["dockerhub-status"], queryFn: api.dockerHubStatus, staleTime: 30_000 })
 
   const invalidateAll = () => { qc.invalidateQueries({ queryKey: ["images"] }); qc.invalidateQueries({ queryKey: ["volumes"] }); qc.invalidateQueries({ queryKey: ["networks"] }) }
 
@@ -45,6 +73,17 @@ export default function ResourcesPage() {
     onSuccess: (r, what) => { toast.success(`Pruned ${what} · reclaimed ${formatBytes((r.SpaceReclaimed as number) ?? 0)}`); invalidateAll() },
     onError: (e: Error) => toast.error(e.message),
   })
+  const push = useMutation({
+    mutationFn: ({ id, repository, tag }: { id: string; repository: string; tag: string }) => api.pushImage(id, repository, tag),
+    onSuccess: (_r, v) => { toast.success(`Pushed ${v.repository}:${v.tag}`); setPushFor(null) },
+    onError: (e: Error, v) => toast.error(`${v.repository}:${v.tag} — ${e.message}`),
+  })
+
+  const openPush = (i: Image) => {
+    setPushFor(i)
+    setPushRepo(guessRepo(i, hub.data?.username))
+    setPushTag(i.tags[0]?.split(":")[1] || "latest")
+  }
 
   const totalImg = (images.data ?? []).reduce((a, i) => a + i.size, 0)
   const unusedImages = (images.data ?? []).filter((i) => !i.in_use).length
@@ -67,11 +106,14 @@ export default function ResourcesPage() {
             <TabsTrigger value="networks">Networks</TabsTrigger>
           </TabsList>
           {isAdmin && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => prune.mutate("images")}><Eraser /> Prune dangling images</Button>
               <Button variant="outline" size="sm" onClick={() => prune.mutate("containers")}><Eraser /> Prune stopped containers</Button>
               <Button variant="outline" size="sm" onClick={() => prune.mutate("volumes")}><Eraser /> Prune unused volumes</Button>
               <Button variant="outline" size="sm" onClick={() => prune.mutate("networks")}><Eraser /> Prune unused networks</Button>
+              {!hub.data?.signed_in && (
+                <Link to="/marketplace" className="text-muted-foreground text-xs underline">Sign in to Docker Hub to push images</Link>
+              )}
             </div>
           )}
         </div>
@@ -81,6 +123,7 @@ export default function ResourcesPage() {
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Tags</TableHead><TableHead>ID</TableHead><TableHead>Size</TableHead><TableHead>Created</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>
+                {images.isLoading && Array.from({ length: 4 }).map((_, i) => <ResourceRowSkeleton key={i} cols={5} admin={isAdmin} />)}
                 {(images.data ?? []).sort((a, b) => Number(a.in_use) - Number(b.in_use) || b.size - a.size).map((i) => (
                   <TableRow key={i.id}>
                     <TableCell className="pl-4 font-mono text-xs">{i.tags.length ? i.tags.join(", ") : <span className="text-muted-foreground">&lt;none&gt;</span>}</TableCell>
@@ -89,7 +132,13 @@ export default function ResourcesPage() {
                     <TableCell className="text-xs">{timeAgo(i.created)}</TableCell>
                     <TableCell><UsageBadge inUse={i.in_use} /></TableCell>
                     {isAdmin && (
-                      <TableCell className="pr-4 text-right">
+                      <TableCell className="pr-4 text-right whitespace-nowrap">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" disabled={!hub.data?.signed_in} onClick={() => openPush(i)}><Upload /></Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{hub.data?.signed_in ? "Push to Docker Hub" : "Sign in to Docker Hub from the Marketplace tab first"}</TooltipContent>
+                        </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button variant="ghost" size="icon-sm" disabled={i.in_use} onClick={() => rmImage.mutate(i.id)}><Trash2 /></Button>
@@ -111,6 +160,7 @@ export default function ResourcesPage() {
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Name</TableHead><TableHead>Driver</TableHead><TableHead>Mountpoint</TableHead><TableHead>Created</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>
+                {volumes.isLoading && Array.from({ length: 4 }).map((_, i) => <ResourceRowSkeleton key={i} cols={5} admin={isAdmin} />)}
                 {(volumes.data ?? []).sort((a, b) => Number(a.in_use) - Number(b.in_use)).map((v) => (
                   <TableRow key={v.name}>
                     <TableCell className="pl-4 font-mono text-xs">{v.name}</TableCell>
@@ -141,6 +191,7 @@ export default function ResourcesPage() {
             <Table>
               <TableHeader><TableRow><TableHead className="pl-4">Name</TableHead><TableHead>ID</TableHead><TableHead>Driver</TableHead><TableHead>Scope</TableHead><TableHead>Usage</TableHead>{isAdmin && <TableHead className="pr-4 text-right" />}</TableRow></TableHeader>
               <TableBody>
+                {networks.isLoading && Array.from({ length: 4 }).map((_, i) => <ResourceRowSkeleton key={i} cols={5} admin={isAdmin} />)}
                 {(networks.data ?? []).sort((a, b) => Number(a.in_use) - Number(b.in_use)).map((n) => (
                   <TableRow key={n.id}>
                     <TableCell className="pl-4 font-mono text-xs">{n.name}{n.protected && <span className="text-muted-foreground ml-2 text-[10px]">(built-in)</span>}</TableCell>
@@ -166,6 +217,36 @@ export default function ResourcesPage() {
           </CardContent></Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!pushFor} onOpenChange={(o) => !o && setPushFor(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Push image</DialogTitle>
+            <DialogDescription>
+              Pushes to Docker Hub as <span className="font-medium">{hub.data?.username}</span>. Re-tags the local image to match before pushing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="push-repo">Repository</Label>
+              <Input id="push-repo" value={pushRepo} onChange={(e) => setPushRepo(e.target.value)} placeholder={`${hub.data?.username ?? "username"}/my-image`} autoFocus />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="push-tag">Tag</Label>
+              <Input id="push-tag" value={pushTag} onChange={(e) => setPushTag(e.target.value)} placeholder="latest" />
+            </div>
+            {push.data?.output && (
+              <pre className="bg-zinc-950 text-zinc-100 max-h-40 overflow-y-auto rounded-md p-2 font-mono text-[11px] whitespace-pre-wrap">{push.data.output}</pre>
+            )}
+            <Button
+              disabled={push.isPending || !pushRepo.trim()}
+              onClick={() => pushFor && push.mutate({ id: pushFor.id, repository: pushRepo.trim(), tag: pushTag.trim() || "latest" })}
+            >
+              {push.isPending ? <Loader2 className="animate-spin" /> : <Upload />} Push
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={!!deleteVolume} onOpenChange={(o) => !o && setDeleteVolume(null)}>
         <AlertDialogContent>

@@ -32,11 +32,20 @@ services:
       KUBERNETES_IN_CLUSTER: ${KUBERNETES_IN_CLUSTER:-false}
       KUBECONFIG: ${KUBECONFIG:-/root/.kube/config}
       KUBERNETES_CONTEXT: ${KUBERNETES_CONTEXT:-}
+      # Where the multi-user account store (users.json) is persisted.
+      DATA_DIR: /data
+      # Lets the app (and scripts/bootstrap_infisical.py, run via
+      # `docker compose run app ...`) reach Infisical's own Postgres to
+      # read/write the dm_infisical_projects bootstrap record.
+      INFISICAL_DB_HOST: infisical-db
+      INFISICAL_DB_PASSWORD: ${INFISICAL_DB_PASSWORD:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${STACKS_DIR}:${STACKS_DIR}
       # Read-only view of the host root so the System page can report host disk usage.
       - /:/hostfs:ro
+      # Persists user accounts across container recreation/rebuilds.
+      - dm-data:/data
     pid: host   # /proc/stat, /proc/meminfo, loadavg, and nsenter→host nvidia-smi
     # Privileged: fixes "Failed to initialize NVML: Unknown Error" when calling
     # host nvidia-smi via nsenter (device cgroup blocked GPU nodes). Also needed
@@ -111,3 +120,4 @@ services:
 volumes:
   infisical-db:
   infisical-redis:
+  dm-data:
